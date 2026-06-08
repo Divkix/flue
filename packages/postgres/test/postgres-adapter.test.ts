@@ -75,7 +75,8 @@ describe('postgres() PersistenceAdapter', () => {
 		const store = adapter.connect();
 		await store.sessions.save('s1', sessionData());
 		expect(await store.sessions.load('s1')).toEqual(sessionData());
-		await adapter.close!();
+		if (!adapter.close) throw new Error('Expected adapter.close to be defined.');
+		await adapter.close();
 	});
 
 	it('close() is idempotent', async () => {
@@ -83,7 +84,8 @@ describe('postgres() PersistenceAdapter', () => {
 		const adapter = postgresFromRunner(runner);
 		await adapter.migrate?.();
 		adapter.connect();
-		await adapter.close!();
-		await adapter.close!();
+		if (!adapter.close) throw new Error('Expected adapter.close to be defined.');
+		await adapter.close();
+		await adapter.close();
 	});
 });

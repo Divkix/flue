@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-06-08
+
 This is a large pre-1.0 release that establishes Flue's durability model across Node.js and Cloudflare. Rather than cataloging every intermediate beta change, this entry highlights the final APIs and the most important upgrade work. For guides and API reference, see the [documentation](https://flueframework.com/docs/).
 
 ### Breaking Changes

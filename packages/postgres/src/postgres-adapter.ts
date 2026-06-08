@@ -10,7 +10,6 @@
 
 import type {
 	AgentDispatchAdmission,
-	AgentExecutionStore,
 	AgentSubmission,
 	AgentSubmissionStore,
 	AgentTurnJournal,
