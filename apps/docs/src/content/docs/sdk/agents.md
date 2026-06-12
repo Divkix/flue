@@ -13,6 +13,8 @@ prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentProm
 
 Sends one prompt to a persistent agent instance and waits for the terminal result. This uses `POST /agents/:name/:id?wait=result`.
 
+Waiting is best-effort and scoped to the server process that admitted the prompt; the prompt itself is a durable submission either way. If that process is interrupted before settlement, the call fails or disconnects while recovery settles the submission in the background — the outcome then appears in session history and as a `submission_settled` event on the agent stream.
+
 ### `AgentPromptOptions`
 
 | Field     | Type                 | Description                                                              |

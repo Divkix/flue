@@ -35,6 +35,7 @@ Events never carry raw image bytes. Image content blocks in event payloads keep 
 | `agent_start` | Agent loop started.                                                                                             |
 | `agent_end`   | Agent loop ended.                                                                                               |
 | `idle`        | Agent activity became idle.                                                                                     |
+| `submission_settled` | Recovery settled an interrupted durable agent submission. Includes the submission id, a `completed` or `failed` outcome, and the terminal error message for failures. Emitted only by recovery — normally processed submissions settle without it. |
 
 ### Agent operations
 
@@ -85,7 +86,7 @@ Both model-driven and programmatic (`shell()`) tool activity emit `tool_start` a
 
 ### Stable contract vs. provider-shaped fields
 
-Event type names, the envelope fields (`v`, `eventIndex`, `timestamp`, identity and correlation fields), and the normalized payloads — `turn_request`/`turn` (the `Llm*` mirror types), `tool_start`/`tool`, `task`, `operation`, `compaction`, `run_*`, `log`, `text_delta`, and `thinking_*` — are the stable event contract.
+Event type names, the envelope fields (`v`, `eventIndex`, `timestamp`, identity and correlation fields), and the normalized payloads — `turn_request`/`turn` (the `Llm*` mirror types), `tool_start`/`tool`, `task`, `operation`, `compaction`, `run_*`, `log`, `submission_settled`, `text_delta`, and `thinking_*` — are the stable event contract.
 
 The detailed message payloads are **not yet stable**: `message` on `message_start`/`message_update`/`message_end`, `message` and `toolResults` on `turn_messages`, and `messages` on `agent_end` mirror the message shape of the underlying agent library (pi-agent-core's `AgentMessage`) and may change shape before 1.0, when they will be replaced with a Flue-owned message type. Readers of persisted streams can branch on the envelope's `v` field when the format changes.
 

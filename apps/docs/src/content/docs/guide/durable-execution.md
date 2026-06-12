@@ -59,6 +59,8 @@ With a durable adapter, Node can recover interrupted work with the same conserva
 
 On graceful shutdown (SIGINT/SIGTERM), active submissions are aborted at the turn boundary and left in a reclaimable state — they are not permanently settled. Their leases expire naturally and are reclaimed on next startup. Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol after a restart.
 
+When reconciliation (rather than normal processing) settles a submission — recognizing already-completed work as success or terminalizing unrecoverable work as failure — it appends a `submission_settled` event to the agent's durable stream so detached readers observe the outcome, and resolves any `?wait=result` caller still waiting in the same process with the persisted result. Waiting on a result is best-effort per process: a caller attached in one process is never resolved by settlement in another, so callers that must survive interruptions should follow the agent stream or session history instead.
+
 A file-backed SQLite adapter protects against process restart on the same host; surviving host loss requires storage outside that host, such as Postgres or another durable shared database.
 
 See [Database](/docs/guide/database/) for session persistence setup and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) for deployment guidance.
