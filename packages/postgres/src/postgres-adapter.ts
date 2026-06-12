@@ -1431,7 +1431,10 @@ class PgEventStreamStore implements EventStreamStore {
 		bucket.add(listener);
 		return () => {
 			bucket!.delete(listener);
-			if (bucket!.size === 0) {
+			// Only remove the map entry if it still holds this bucket;
+			// deleteStream may have detached it and a newer bucket may have
+			// been installed for a recreated stream since.
+			if (bucket!.size === 0 && this.listeners.get(path) === bucket) {
 				this.listeners.delete(path);
 			}
 		};
@@ -1441,6 +1444,7 @@ class PgEventStreamStore implements EventStreamStore {
 		await this.runner.query(`DELETE FROM flue_event_stream_entries WHERE path = $1`, [path]);
 		await this.runner.query(`DELETE FROM flue_event_streams WHERE path = $1`, [path]);
 		this.notifyListeners(path);
+		this.listeners.get(path)?.clear();
 		this.listeners.delete(path);
 	}
 
