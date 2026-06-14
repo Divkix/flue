@@ -39,7 +39,7 @@ describe('@flue/resend workerd ingress', () => {
 		expect(globalThis.Buffer).toBeDefined();
 	});
 
-	it('normalizes a future verified event in workerd', async () => {
+	it('forwards a future verified event with its native payload in workerd', async () => {
 		const webhook = vi.fn();
 		const app = channelApp(
 			createResendChannel({
@@ -60,8 +60,8 @@ describe('@flue/resend workerd ingress', () => {
 
 		expect(response.status).toBe(200);
 		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
-			type: 'unknown',
-			eventType: 'domain.expiring',
+			type: 'domain.expiring',
+			created_at: '2026-06-13T23:05:00.000Z',
 			data: { id: 'domain_worker_1', days_remaining: 14 },
 		});
 		expect(crypto.subtle).toBeDefined();

@@ -28,10 +28,12 @@ export const channel = createResendChannel({
 Place this export in `channels/resend.ts`. Flue discovers it and serves
 `POST /channels/resend/webhook` relative to the `flue()` mount.
 
-Supported SDK event variants retain their provider-native types. Other verified
-event types arrive as `{ type: 'unknown', eventType, raw, ... }`. Resend
-provides at-least-once delivery and does not guarantee ordering; the channel is
-stateless and does not deduplicate `delivery.id`.
+Every verified delivery is the official `WebhookEventPayload` union, forwarded
+verbatim with its provider-native `event.type`, `created_at`, and `data`
+fields — including event types newer than your installed `resend` version. The
+channel never wraps events in a `type: 'unknown'` envelope. Resend provides
+at-least-once delivery and does not guarantee ordering; the channel is stateless
+and does not deduplicate `delivery.id`.
 
 Returning no value or a JSON-compatible value acknowledges the delivery with
 `200`. A returned Hono or Fetch `Response` passes through unchanged. Resend

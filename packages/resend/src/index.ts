@@ -1,6 +1,8 @@
 import type { Context, Env, Handler } from 'hono';
-import type { Resend, WebhookEventPayload } from 'resend';
+import type { Resend, WebhookEvent, WebhookEventPayload } from 'resend';
 import { createResendWebhookHandler } from './webhook.ts';
+
+export type { WebhookEvent, WebhookEventPayload };
 
 export type JsonValue =
 	| null
@@ -27,40 +29,19 @@ export interface ResendChannelOptions<E extends Env = Env> {
 	webhook(input: ResendWebhookHandlerInput<E>): ResendHandlerResult;
 }
 
-/** Provider event names whose payload shapes are validated by this package. */
-export type ResendKnownEventType =
-	| 'email.sent'
-	| 'email.scheduled'
-	| 'email.delivered'
-	| 'email.delivery_delayed'
-	| 'email.complained'
-	| 'email.bounced'
-	| 'email.opened'
-	| 'email.clicked'
-	| 'email.received'
-	| 'email.failed'
-	| 'email.suppressed'
-	| 'contact.created'
-	| 'contact.updated'
-	| 'contact.deleted'
-	| 'domain.created'
-	| 'domain.updated'
-	| 'domain.deleted';
-
-/** Official SDK event variants whose payload shapes are validated by this package. */
-export type ResendKnownWebhookEvent = Extract<WebhookEventPayload, { type: ResendKnownEventType }>;
-
-/** Verified provider event whose type is not in `ResendKnownEventType`. */
-export interface ResendUnknownWebhookEvent {
-	type: 'unknown';
-	eventType: string;
-	createdAt: string;
-	data: Record<string, unknown>;
-	/** Complete parsed payload after signature verification. */
-	raw: unknown;
-}
-
-export type ResendWebhookEvent = ResendKnownWebhookEvent | ResendUnknownWebhookEvent;
+/**
+ * Provider-native verified webhook event: the official Resend
+ * `WebhookEventPayload` union, forwarded with its original `snake_case` field
+ * names and nesting. The channel never reshapes it into a Flue-owned form, so
+ * `switch (event.type)` narrows each modeled variant.
+ *
+ * The official verifier (`client.webhooks.verify()`) returns the parsed body
+ * for any authenticated delivery without restricting it to the modeled event
+ * names, so a newly introduced provider event still reaches the handler at
+ * runtime — it is simply typed as the current official union. Inspect
+ * `event.type` to handle an event your installed `resend` version predates.
+ */
+export type ResendWebhookEvent = WebhookEventPayload;
 
 export interface ResendWebhookDelivery {
 	/** `svix-id`; use this for application-owned deduplication. */

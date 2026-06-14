@@ -164,10 +164,13 @@ credentials. Follow the project's secret conventions and never invent values.
 Receiving-domain ownership, MX records, webhook creation, signing-secret
 rotation, API-key storage, and reply routing remain application concerns.
 
-The callback receives `{ c, event, delivery }`. Supported `resend@6.12.4`
-webhook variants keep their official provider-native types. Any other verified
-event type arrives as
-`{ type: 'unknown', eventType, createdAt, data, raw }`.
+The callback receives `{ c, event, delivery }`. `event` is the provider-native
+payload the official `client.webhooks.verify()` returns, typed as the SDK's
+`WebhookEventPayload` union with its original `snake_case` fields. Switch on
+`event.type` to narrow to a specific variant. A verified delivery whose `type`
+is outside the SDK union is still forwarded with its native `type`,
+`created_at`, and `data` fields rather than dropped, so applications can handle
+newly introduced provider events.
 
 Resend provides at-least-once delivery and does not guarantee ordering. Use
 `delivery.id`, sourced from `svix-id`, as the durable deduplication identity

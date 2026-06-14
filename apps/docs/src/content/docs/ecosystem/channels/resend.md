@@ -110,9 +110,12 @@ becomes the response body, and a normal Hono or Fetch `Response` passes through
 unchanged. Resend retries every status other than `200`, so return a non-`200`
 response only when redelivery is intentional.
 
-Supported SDK webhook variants retain their official provider-native types.
-Other verified event types arrive as `type: 'unknown'` with `eventType`,
-`createdAt`, `data`, and the complete parsed payload under `raw`.
+Every verified delivery is the official `WebhookEventPayload` union, forwarded
+verbatim. Each event keeps its provider-native `event.type`, `created_at`, and
+`data` fields, including event types newer than your installed `resend`
+version. The channel never wraps events in a `type: 'unknown'` envelope, so
+`switch (event.type)` narrows the modeled variants and a `default` branch
+handles anything your SDK predates.
 
 ## Retrieve message content
 

@@ -152,7 +152,7 @@ describe('createResendChannel()', () => {
 		]);
 	});
 
-	it('normalizes a verified future event without losing its provider payload', async () => {
+	it('forwards a verified future event with its native provider payload unmodified', async () => {
 		const webhook = vi.fn();
 		const app = channelApp(
 			createResendChannel({
@@ -174,51 +174,78 @@ describe('createResendChannel()', () => {
 		expect(response.status).toBe(200);
 		expect(webhook.mock.calls[0]?.[0]).toMatchObject({
 			event: {
-				type: 'unknown',
-				eventType: 'email.quarantined',
-				createdAt: '2026-06-13T22:14:00.000Z',
+				type: 'email.quarantined',
+				created_at: '2026-06-13T22:14:00.000Z',
 				data: { email_id: 'email_future_1', reason: 'policy' },
-				raw: { type: 'email.quarantined' },
 			},
 			delivery: { id: 'msg_future' },
 		});
+		// No Flue-owned reshape: native field names are preserved verbatim.
+		const forwarded = webhook.mock.calls[0]?.[0].event as Record<string, unknown>;
+		expect(forwarded).not.toHaveProperty('eventType');
+		expect(forwarded).not.toHaveProperty('createdAt');
+		expect(forwarded).not.toHaveProperty('raw');
 	});
 
-	it('rejects malformed known payloads after successful signature verification', async () => {
+	it('forwards verified payloads without re-validating event-family shapes', async () => {
 		const webhook = vi.fn();
 		const app = channelApp(
 			createResendChannel({
-				client: new Resend('re_malformed_event'),
+				client: new Resend('re_no_revalidation'),
 				webhookSecret: WEBHOOK_SECRET,
 				webhook,
 			}),
 		);
-		const malformedReceived = JSON.stringify({
+		// A body the official verifier accepts but that the previous Flue schema
+		// validators rejected. The channel must no longer drop it: shape policy
+		// belongs to the application, not channel ingress.
+		const received = JSON.stringify({
 			type: 'email.received',
 			created_at: '2026-06-13T22:15:00.000Z',
 			data: { ...receivedEmailData(), attachments: [{ id: 'attachment_without_metadata' }] },
 		});
-		const malformedContact = JSON.stringify({
+		const contact = JSON.stringify({
 			type: 'contact.created',
 			created_at: '2026-06-13T22:15:00.000Z',
 			data: { id: 'contact_without_required_fields' },
 		});
 
 		const receivedResponse = await app.request(
-			jsonRequest(
-				malformedReceived,
-				await signedHeaders(malformedReceived, { id: 'msg_bad_received' }),
-			),
+			jsonRequest(received, await signedHeaders(received, { id: 'msg_received_passthrough' })),
 		);
 		const contactResponse = await app.request(
-			jsonRequest(
-				malformedContact,
-				await signedHeaders(malformedContact, { id: 'msg_bad_contact' }),
-			),
+			jsonRequest(contact, await signedHeaders(contact, { id: 'msg_contact_passthrough' })),
 		);
 
-		expect(receivedResponse.status).toBe(400);
-		expect(contactResponse.status).toBe(400);
+		expect(receivedResponse.status).toBe(200);
+		expect(contactResponse.status).toBe(200);
+		expect(webhook.mock.calls.map(([input]) => input.event.type)).toEqual([
+			'email.received',
+			'contact.created',
+		]);
+	});
+
+	it('rejects a verified payload that is not an object carrying a provider type', async () => {
+		const webhook = vi.fn();
+		const app = channelApp(
+			createResendChannel({
+				client: new Resend('re_floor'),
+				webhookSecret: WEBHOOK_SECRET,
+				webhook,
+			}),
+		);
+		const noType = JSON.stringify({ created_at: '2026-06-13T22:16:00.000Z', data: {} });
+		const notObject = JSON.stringify('just a string');
+
+		const noTypeResponse = await app.request(
+			jsonRequest(noType, await signedHeaders(noType, { id: 'msg_no_type' })),
+		);
+		const notObjectResponse = await app.request(
+			jsonRequest(notObject, await signedHeaders(notObject, { id: 'msg_not_object' })),
+		);
+
+		expect(noTypeResponse.status).toBe(400);
+		expect(notObjectResponse.status).toBe(400);
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
@@ -310,14 +337,12 @@ describe('createResendChannel()', () => {
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
-	it('passes handler responses through so a non-200 status can request retry', async () => {
+	it('serializes JSON returns, passes Response through, and acknowledges no value with 200', async () => {
 		const body = JSON.stringify(emailEvent('email.delivered'));
-		const outcomes: Array<undefined | object | Response | bigint | Error> = [
+		const outcomes: Array<undefined | object | Response> = [
 			undefined,
 			{ accepted: true },
 			new Response('queued', { status: 202, headers: { 'x-result': 'response' } }),
-			1n,
-			new Error('handler failure'),
 		];
 		const responses: Response[] = [];
 
@@ -327,7 +352,6 @@ describe('createResendChannel()', () => {
 					client: new Resend(`re_handler_${index}`),
 					webhookSecret: WEBHOOK_SECRET,
 					webhook() {
-						if (outcome instanceof Error) throw outcome;
 						return outcome as never;
 					},
 				}),
@@ -339,10 +363,47 @@ describe('createResendChannel()', () => {
 			);
 		}
 
-		expect(responses.map((response) => response.status)).toEqual([200, 200, 202, 500, 500]);
+		expect(responses.map((response) => response.status)).toEqual([200, 200, 202]);
 		await expect(responses[1]?.json()).resolves.toEqual({ accepted: true });
 		await expect(responses[2]?.text()).resolves.toBe('queued');
 		expect(responses[2]?.headers.get('x-result')).toBe('response');
+	});
+
+	it('lets the Hono error handler handle thrown and non-serializable returns', async () => {
+		const body = JSON.stringify(emailEvent('email.delivered'));
+		// A thrown handler and a return that `Response.json` cannot serialize (a
+		// BigInt throws) both now propagate to the framework error handler rather
+		// than producing a channel-owned clean 500.
+		const failures: Array<{ id: string; outcome: 'throw' | 'bigint' }> = [
+			{ id: 'msg_handler_throw', outcome: 'throw' },
+			{ id: 'msg_handler_bigint', outcome: 'bigint' },
+		];
+
+		for (const { id, outcome } of failures) {
+			const failure = new Error('handler failure');
+			const app = channelApp(
+				createResendChannel({
+					client: new Resend(`re_${id}`),
+					webhookSecret: WEBHOOK_SECRET,
+					webhook() {
+						if (outcome === 'throw') throw failure;
+						return 1n as never;
+					},
+				}),
+			);
+			let received: unknown;
+			app.onError((error, c) => {
+				received = error;
+				return c.text('handled', 503);
+			});
+
+			const response = await app.request(jsonRequest(body, await signedHeaders(body, { id })));
+
+			expect(response.status).toBe(503);
+			expect(await response.text()).toBe('handled');
+			if (outcome === 'throw') expect(received).toBe(failure);
+			else expect(received).toBeInstanceOf(TypeError);
+		}
 	});
 
 	it('validates constructor options and publishes only the fixed webhook route', () => {

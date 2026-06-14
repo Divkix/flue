@@ -16,12 +16,11 @@ export {
   type ResendChannel,
   type ResendChannelOptions,
   type ResendHandlerResult,
-  type ResendKnownEventType,
-  type ResendKnownWebhookEvent,
-  type ResendUnknownWebhookEvent,
   type ResendWebhookDelivery,
   type ResendWebhookEvent,
   type ResendWebhookHandlerInput,
+  type WebhookEvent,
+  type WebhookEventPayload,
 };
 ```
 
@@ -52,7 +51,7 @@ interface ResendChannelOptions<E extends Env = Env> {
 | `client`        | Project-owned official Resend SDK client.                    |
 | `webhookSecret` | Signing secret for this Resend webhook endpoint.             |
 | `bodyLimit`     | Maximum request-body size in bytes. Defaults to 1 MiB.       |
-| `webhook`       | Receives each verified and structurally valid webhook event. |
+| `webhook`       | Receives each verified webhook event.                        |
 
 The constructor throws `TypeError` for a missing compatible client, empty
 signing secret, missing callback, or non-positive integer body limit.
@@ -93,8 +92,8 @@ type ResendHandlerResult =
 ```
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes a
-JSON response. A normal Hono or Fetch `Response` passes through unchanged.
-Thrown callbacks and unsupported return values produce an empty `500`.
+JSON response. A normal Hono or Fetch `Response` passes through unchanged. A
+thrown callback propagates to the framework error handler.
 
 Resend treats only `200` as a successful delivery and retries other statuses.
 Returning a non-`200` `Response` therefore requests redelivery. The package
@@ -126,13 +125,13 @@ to their own persistence and authorization model.
 ## `ResendWebhookEvent`
 
 ```ts
-type ResendWebhookEvent = ResendKnownWebhookEvent | ResendUnknownWebhookEvent;
-
-type ResendKnownWebhookEvent = Extract<WebhookEventPayload, { type: ResendKnownEventType }>;
+type ResendWebhookEvent = WebhookEventPayload;
 ```
 
-`ResendKnownWebhookEvent` retains provider-native SDK variants for the event
-names validated by this package:
+`ResendWebhookEvent` is exactly the official Resend `WebhookEventPayload` union.
+The channel never reshapes a verified delivery: it forwards the provider payload
+verbatim with its native `snake_case` `type`, `created_at`, and event-specific
+`data` fields. `switch (event.type)` narrows each modeled variant:
 
 - Email: `email.sent`, `email.scheduled`, `email.delivered`,
   `email.delivery_delayed`, `email.complained`, `email.bounced`,
@@ -141,31 +140,15 @@ names validated by this package:
 - Contacts: `contact.created`, `contact.updated`, and `contact.deleted`
 - Domains: `domain.created`, `domain.updated`, and `domain.deleted`
 
-Known events retain the SDK's `type`, `created_at`, and event-specific `data`
-fields. `email.received` contains message metadata and attachment descriptors,
-not the complete body or attachment content. Retrieve those later through the
+`email.received` contains message metadata and attachment descriptors, not the
+complete body or attachment content. Retrieve those later through the
 project-owned `Resend` client.
 
-## Unknown event normalization
-
-```ts
-interface ResendUnknownWebhookEvent {
-  type: 'unknown';
-  eventType: string;
-  createdAt: string;
-  data: Record<string, unknown>;
-  raw: unknown;
-}
-```
-
-A structurally valid, verified event whose provider `type` is not in
-`ResendKnownEventType` is normalized to `type: 'unknown'`. `eventType`
-preserves the provider event type, `createdAt` copies `created_at`, `data`
-preserves the provider data object, and `raw` contains the complete parsed
-payload.
-
-Unknown normalization still requires a non-empty provider event type, a
-parseable `created_at`, and an object-valued `data` field.
+A verified event whose `type` is newer than the installed `resend` version is
+still forwarded at runtime — it is simply typed as the current official union
+rather than dropped or wrapped in a Flue-owned envelope. The channel never emits
+a `type: 'unknown'` shape. Inspect `event.type` defensively to handle an event
+your installed `resend` version predates.
 
 ## Verification
 
@@ -190,8 +173,11 @@ client.webhooks.verify({
 
 The official SDK verifies the signature and timestamp before application code
 runs. Unsupported media types receive `415`; oversized bodies receive `413`;
-missing or malformed headers, invalid UTF-8, failed verification, malformed
-JSON, and invalid event shapes receive `400`.
+missing or malformed headers, invalid UTF-8, and failed verification receive
+`400`. A verified payload is rejected with `400` only when it is not an object
+or carries no non-empty string `type`; the channel applies no further Flue shape
+schema and does not re-validate the event families the official types already
+describe.
 
 ## Application boundary
 
