@@ -19,7 +19,7 @@ intentional, and attempt a fix.\`;
 // Compose the context your agent needs to do real work,
 // complete with virtual, local, or remote container sandbox.
 export default createAgent(() => ({
-  model:   'anthropic/claude-sonnet-4-8',
+  model:   'anthropic/claude-sonnet-4-6',
   tools:   [replyToIssue],
   skills:  [triage, verify],
   sandbox: local(),
