@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Prepares publish artifacts for all public packages:
+ * Prepares publish artifacts for the core packages (`@flue/cli`,
+ * `@flue/runtime`, and `@flue/sdk`):
  * - Copies `apps/docs/src/content/docs` into `<package>/docs` for agent consumption.
- * - Syncs the root README.md into the core packages (cli, runtime, sdk).
+ * - Syncs the root README.md into each package.
  *
  * Run from anywhere: `node scripts/prepare-publish.mjs`
  */
@@ -14,7 +15,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const docsSource = join(repoRoot, 'apps/docs/src/content/docs');
 const readmeSource = join(repoRoot, 'README.md');
 
-const README_SYNC_PACKAGES = new Set(['@flue/cli', '@flue/runtime', '@flue/sdk']);
+const PUBLISH_ARTIFACT_PACKAGES = new Set(['@flue/cli', '@flue/runtime', '@flue/sdk']);
 
 const packagesDir = join(repoRoot, 'packages');
 for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
@@ -28,17 +29,15 @@ for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
 	} catch {
 		continue;
 	}
-	if (manifest.private === true) {
+	const docsTarget = join(packageRoot, 'docs');
+	await rm(docsTarget, { force: true, recursive: true });
+
+	if (!PUBLISH_ARTIFACT_PACKAGES.has(manifest.name)) {
 		continue;
 	}
 
-	const docsTarget = join(packageRoot, 'docs');
-	await rm(docsTarget, { force: true, recursive: true });
 	await cp(docsSource, docsTarget, { recursive: true });
-
-	if (README_SYNC_PACKAGES.has(manifest.name)) {
-		await copyFile(readmeSource, join(packageRoot, 'README.md'));
-	}
+	await copyFile(readmeSource, join(packageRoot, 'README.md'));
 
 	console.error(`[flue] Prepared publish artifacts for ${manifest.name}`);
 }
