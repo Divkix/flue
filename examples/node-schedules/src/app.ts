@@ -1,8 +1,9 @@
-import { dispatch } from '@flue/runtime';
+import { dispatch, invoke } from '@flue/runtime';
 import { flue } from '@flue/runtime/routing';
 import { Cron } from 'croner';
 import { Hono } from 'hono';
 import scheduledAgent from './agents/scheduled.ts';
+import scheduledWorkflow from './workflows/scheduled.ts';
 
 const app = new Hono();
 app.route('/', flue());
@@ -34,15 +35,12 @@ new Cron(
 		catch: (error) => console.error('Scheduled workflow admission failed', error),
 	},
 	async () => {
-		const response = await app.request('/workflows/scheduled', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
+		await invoke(scheduledWorkflow, {
+			input: {
 				prompt: 'Review recent activity and return the daily summary.',
 				scheduledAt: new Date().toISOString(),
-			}),
+			},
 		});
-		if (!response.ok) throw new Error(`Scheduled workflow was not admitted: ${response.status}`);
 	},
 );
 

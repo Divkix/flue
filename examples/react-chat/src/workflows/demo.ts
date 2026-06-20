@@ -1,10 +1,16 @@
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, createWorkflow } from '@flue/runtime';
+import * as v from 'valibot';
 
-export async function run({ id, log, payload }: FlueContext) {
-	log.info('workflow started', { runId: id });
-	await new Promise((resolve) => setTimeout(resolve, 500));
-	log.info('workflow received payload', { payload });
-	await new Promise((resolve) => setTimeout(resolve, 500));
-	log.info('workflow completed');
-	return { ok: true, payload };
-}
+const agent = createAgent(() => ({ model: false }));
+export default createWorkflow({
+	agent,
+	input: v.object({ requestedAt: v.string() }),
+	async run({ log, input }) {
+		log.info('workflow started', { requestedAt: input.requestedAt });
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		log.info('workflow received input', { input });
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		log.info('workflow completed');
+		return { ok: true, requestedAt: input.requestedAt };
+	},
+});

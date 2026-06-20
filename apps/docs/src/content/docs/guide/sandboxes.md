@@ -15,22 +15,26 @@ By default, an initialized agent works in a virtual sandbox unless you configure
 For example, a workflow can stage an input document, let an agent work on it, and retrieve an output file:
 
 ```ts title="src/workflows/review-document.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+import { createAgent, createWorkflow } from '@flue/runtime';
+import * as v from 'valibot';
 
 const reviewer = createAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   cwd: '/workspace',
 }));
 
-export async function run({ init, payload }: FlueContext<{ document: string }>) {
-  const harness = await init(reviewer);
-  await harness.fs.writeFile('document.md', payload.document);
+export default createWorkflow({
+  agent: reviewer,
+  input: v.object({ document: v.string() }),
 
-  const session = await harness.session();
-  await session.prompt('Review document.md and write your findings to review.md.');
-
-  return { review: await harness.fs.readFile('review.md') };
-}
+  async run({ harness, input }) {
+    await harness.fs.writeFile('document.md', input.document);
+    await (
+      await harness.session()
+    ).prompt('Review document.md and write your findings to review.md.');
+    return { review: await harness.fs.readFile('review.md') };
+  },
+});
 ```
 
 No `sandbox` field is needed here: omitting it selects the virtual sandbox. `cwd` sets the working directory, so these relative file paths resolve below `/workspace`. The agent can use built-in file and command capabilities in that workspace, while application code uses `harness.fs` to provide inputs and retrieve results.

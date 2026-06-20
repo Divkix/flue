@@ -115,7 +115,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: { secret: true },
+				input: { secret: true },
 				v: 1,
 				eventIndex: 0,
 				timestamp: '2026-05-27T00:00:00.000Z',
@@ -210,7 +210,7 @@ describe('createOpenTelemetryObserver', () => {
 			'flue.workflow.name': 'report',
 		});
 		expect(tracer.spans[0]?.options?.root).toBe(true);
-		expect(tracer.spans[0]?.attributes).not.toHaveProperty('flue.workflow.payload');
+		expect(tracer.spans[0]?.attributes).not.toHaveProperty('flue.workflow.input');
 		expect(tracer.spans[0]?.attributes).toMatchObject({
 			'flue.workflow.duration_ms': 40,
 		});
@@ -232,7 +232,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: {},
+				input: {},
 				eventIndex: 0,
 				v: 1,
 				timestamp: '2026-05-27T00:00:00.000Z',
@@ -420,7 +420,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: {},
+				input: {},
 				v: 1,
 				eventIndex: 15,
 				timestamp: '2026-05-27T00:00:00.000Z',
@@ -522,7 +522,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: {},
+				input: {},
 				v: 1,
 				eventIndex: 20,
 				timestamp: '2026-05-27T00:00:00.000Z',
@@ -582,7 +582,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: {},
+				input: {},
 				v: 1,
 				eventIndex: 23,
 				timestamp: '2026-05-27T00:00:00.000Z',
@@ -916,7 +916,7 @@ describe('createOpenTelemetryObserver', () => {
 				runId: 'run-1',
 				workflowName: 'report',
 				startedAt: '2026-05-27T00:00:00.000Z',
-				payload: {},
+				input: {},
 				v: 1,
 				eventIndex: 38,
 				timestamp: '2026-05-27T00:00:00.000Z',

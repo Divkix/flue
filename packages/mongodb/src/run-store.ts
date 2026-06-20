@@ -29,9 +29,9 @@ export class MongoRunStore implements RunStore {
 	}
 	async createRun(input: CreateRunInput): Promise<void> {
 		const payload =
-			input.payload === undefined
+			input.input === undefined
 				? undefined
-				: await this.values.stage(`run:${input.runId}:payload`, input.payload);
+				: await this.values.stage(`run:${input.runId}:payload`, input.input);
 		let committed = false;
 		try {
 			await this.runner.transaction(async (tx) => {
@@ -139,7 +139,7 @@ export class MongoRunStore implements RunStore {
 		return {
 			...pointer(row),
 			...(row.payload
-				? { payload: await this.values.read(row.payload as unknown as StoredValue) }
+				? { input: await this.values.read(row.payload as unknown as StoredValue) }
 				: {}),
 			...(row.result
 				? { result: await this.values.read(row.result as unknown as StoredValue) }

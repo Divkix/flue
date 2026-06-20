@@ -61,7 +61,7 @@ Model-turn leaf spans export GenAI semantic-convention usage attributes (`gen_ai
 
 ## Sensitive content
 
-By default, spans contain identifiers, durations, model/provider attributes, token/cost metadata, log levels, and generic failure messages only. They do not contain detailed terminal errors, workflow payloads/results, model input/output, tool arguments/results, task prompts/results, or log content.
+By default, spans contain identifiers, durations, model/provider attributes, token/cost metadata, log levels, and generic failure messages only. They do not contain detailed terminal errors, workflow inputs/results, model input/output, tool arguments/results, task prompts/results, or log content.
 
 To export content, provide an application-owned `exportContent` callback. It receives a shallow copy of each content-bearing Flue event. Return a (typically sanitized) event to export its supported content values, or return `undefined` to omit content from that event:
 
@@ -83,4 +83,4 @@ observe(
 
 The adapter retains the original event for span lifecycle correlation. If you modify nested values, clone the paths you change rather than mutating the original nested objects.
 
-For local debugging with intentionally unsanitized data, pass `exportContent: (event) => event`. This can export workflow payloads/results, detailed errors, model-visible messages including system prompts and reasoning-bearing content, log content, tool arguments/results, task prompts/results, and task working directories. Flue replaces image data in recognized content blocks with an omission sentinel, but arbitrary application-owned values still require sanitization. Review exporter retention and access requirements before enabling content export. Metadata such as ids and session names may also be sensitive if your application embeds customer data in them.
+For local debugging with intentionally unsanitized data, pass `exportContent: (event) => event`. This can export workflow inputs/results, detailed errors, model-visible messages including system prompts and reasoning-bearing content, log content, tool arguments/results, task prompts/results, and task working directories. Flue replaces image data in recognized content blocks with an omission sentinel, but arbitrary application-owned values still require sanitization. Review exporter retention and access requirements before enabling content export. Metadata such as ids and session names may also be sensitive if your application embeds customer data in them.

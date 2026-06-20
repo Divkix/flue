@@ -1,64 +1,95 @@
 ---
 title: Workflows
-description: Create finite agent-backed operations, run them, and inspect their outcomes.
-lastReviewedAt: 2026-05-29
+description: Create finite agent-backed operations from inline or reusable Actions.
+lastReviewedAt: 2026-06-19
 ---
 
-Workflows are useful when your application needs an agent to complete a single unit of work without an ongoing conversation, such as a background job, document transformation, code review, or CI task. This guide covers creating a workflow, controlling its execution in code, and inspecting its result. If you need an agent that continues accepting messages over time, see [Agents](/docs/guide/building-agents/).
+Workflows are finite, inspectable operations for background jobs, document transformations, reviews, and CI tasks. Every workflow binds one [Action](/docs/api/action-api/) to one created agent. Use an [agent](/docs/guide/building-agents/) instead when work should continue across messages.
 
-## Creating a new workflow
+## Create a workflow
 
-In a Flue project, a workflow is a file in `src/workflows/` that exports a `run(...)` function. The filename gives the workflow its name: `src/workflows/summarize.ts` defines the `summarize` workflow.
+A file in `src/workflows/` defines a discovered workflow. Its filename becomes the workflow name, and its default export must be the value returned by `createWorkflow()`:
 
 ```ts title="src/workflows/summarize.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+import { createAgent, createWorkflow } from '@flue/runtime';
+import * as v from 'valibot';
 
 const summarizer = createAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Summarize the supplied document clearly and concisely.',
 }));
 
-export async function run({ init, payload }: FlueContext<{ text: string }>) {
-  const harness = await init(summarizer);
-  const session = await harness.session();
-  const response = await session.prompt(payload.text);
+export default createWorkflow({
+  agent: summarizer,
+  input: v.object({ text: v.string() }),
+  output: v.object({ summary: v.string() }),
 
-  return { summary: response.text };
-}
+  async run({ harness, input, log }) {
+    log.info('Summarization requested', { characters: input.text.length });
+    const session = await harness.session();
+    const response = await session.prompt(input.text);
+    return { summary: response.text };
+  },
+});
 ```
 
-In this example:
+`agent` is required. It defines the model, tools, skills, subagents, sandbox, and other execution policy for the harness that Flue creates for each run. The agent may be private to the workflow; it does not need to be discovered under `agents/` unless it should also be addressable through agent routes or `dispatch()`.
 
-- **The filename:** This gives the workflow its name: `summarize`.
-- `createAgent(...)`: This defines the agent used to perform the work.
-- `run(...)`: This is the unit of work Flue runs for each invocation. It receives the workflow's [`FlueContext`](/docs/api/agent-api/#fluecontext), which also carries `id`, `env`, `req`, and `log`.
-- `init(summarizer)`: This initializes the created agent for this workflow invocation and returns its harness.
-- `harness.session()`: This opens the default session used for the operation.
-- **The return value:** This becomes the completed workflow result.
+The inline `input` and `output` fields are optional Valibot schemas. Input must be a top-level object schema. Flue validates input before `run()` and validates and snapshots the returned output before completing the run.
 
-A workflow can contain ordinary TypeScript logic before, between, or after agent operations: load application data, branch on input, log progress, or transform a response before returning it. Configure the agent's model, instructions, tools, skills, and sandbox through `createAgent(...)`, as you would for an addressable agent.
+## Action context
 
-Prefer `init(agent)` and `session.prompt(...)` for model-backed work inside a workflow, even when the workflow only makes one model call. Calling a provider binding or SDK directly bypasses Flue's model resolution, tools, skills, sandbox configuration, operation events, and response handling.
+An Action receives a deliberately small context:
 
-See [Project Layout](/docs/guide/project-layout/) for supported source layouts, [Models & Providers](/docs/guide/models/) for model configuration, and [Agents](/docs/guide/building-agents/) for agent configuration concepts.
+| Member    | Description                                                                 |
+| --------- | --------------------------------------------------------------------------- |
+| `harness` | Invocation-scoped access to sessions, the filesystem, and shell operations. |
+| `input`   | Parsed input; present only when the Action declares an input schema.        |
+| `log`     | Structured logging for the current execution.                               |
 
-## Running a workflow
+Transport requests, environment bindings, and run IDs are not Action context. Validate transport-specific data before admission and pass required application data explicitly through `input`. Agent initialization may use platform bindings through its `AgentCreateContext`.
 
-Each time a workflow is invoked, Flue creates a **workflow run** with a unique `runId`. The run captures its completed result or error and can include events from the agent operations performed inside `run(...)`.
+The workflow runner owns the agent policy, harness, and resources. The Action borrows them for one invocation. Calling an Action as an agent tool creates an isolated child execution scope with its own default and named sessions; it shares the parent configuration, sandbox, and filesystem, cannot reenter the waiting parent session, and is retained and cleaned up with its parent.
 
-### Local execution
+## Extract reusable Actions
 
-Use `flue run` to execute a discovered workflow locally or from CI. The workflow does not need to be exposed over HTTP:
+Use `defineAction()` when the same finite behavior should back multiple workflows or be callable by a model through an agent's `actions` list:
 
-```bash
-pnpm exec flue run summarize --target node --payload '{"text":"Flue workflows complete finite agent-backed operations."}'
+```ts title="src/actions/summarize.ts"
+import { defineAction } from '@flue/runtime';
+import * as v from 'valibot';
+
+export const summarize = defineAction({
+  name: 'summarize_document',
+  description: 'Summarize a document clearly and concisely.',
+  input: v.object({ text: v.string() }),
+  output: v.object({ summary: v.string() }),
+
+  async run({ harness, input }) {
+    const response = await (await harness.session()).prompt(input.text);
+    return { summary: response.text };
+  },
+});
 ```
 
-`flue run` reports the run identity and events, and prints the successful workflow result as JSON. Local execution currently builds and runs the Node target in a temporary child process. Its printed run ID is useful for correlating inline output, but the child does not publish run-inspection routes and its history disappears when the command exits.
+Bind the extracted Action without repeating its schemas or handler:
 
-### HTTP
+```ts title="src/workflows/summarize.ts"
+import { createAgent, createWorkflow } from '@flue/runtime';
+import { summarize } from '../actions/summarize.ts';
 
-Export `route` when callers should invoke the workflow over HTTP:
+const summarizer = createAgent(() => ({
+  model: 'anthropic/claude-haiku-4-5',
+}));
+
+export default createWorkflow({ agent: summarizer, action: summarize });
+```
+
+`createWorkflow()` accepts exactly one of `action` or `run`. Inline Actions are workflow-private and therefore do not need a name or description.
+
+## Expose routes separately
+
+HTTP exposure remains a module concern, separate from workflow execution:
 
 ```ts title="src/workflows/summarize.ts"
 import type { WorkflowRouteHandler } from '@flue/runtime';
@@ -66,118 +97,68 @@ import type { WorkflowRouteHandler } from '@flue/runtime';
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 ```
 
-An exposed `summarize` workflow accepts requests at `POST /workflows/summarize`. The route middleware is also the boundary where your application can authenticate or reject an incoming request before starting a run.
+This exposes `POST /workflows/summarize` and applies the middleware to invocation and run reads. Do not put `route` inside `createWorkflow()`. A route-free workflow remains available to `flue run` and ambient `invoke()`.
 
-By default, `POST /workflows/summarize` returns `202 { runId, streamUrl, offset }` after admission. Add `?wait=result` to wait for the completed result in the same request. For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
+## Invoke workflows
 
-Application-owned routes, Worker handlers, and other workflows should use the same admission boundary when they want a real workflow run. Do not import a workflow module and call `run(...)` directly from `app.ts`, `cloudflare.ts`, an email handler, or a scheduler; that bypasses Flue's admission path, durable run storage, events, route middleware, and run inspection APIs. Instead, call the mounted workflow route with an authenticated `Request`, or extract shared pure application logic into a separate module that both the workflow and the caller can use.
+### CLI
 
-## Working with the harness
+Run a discovered workflow locally without exposing HTTP:
 
-`init(agent)` returns a harness: the initialized environment your workflow uses for that agent. Through the harness, application code can prepare the agent's workspace and open sessions where the agent performs work.
+```bash
+pnpm exec flue run summarize --target node --input '{"text":"Flue workflows complete finite operations."}'
+```
 
-### Files and commands
+`flue run` validates the JSON supplied to `--input`, reports run events, and prints the successful result as JSON. Its temporary child process does not publish run-inspection routes and its history disappears when the command exits.
 
-A workflow can provide files for an agent to work on and collect the generated artifact after it finishes:
+### Application code
 
-```ts title="src/workflows/review-document.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+Use ambient `invoke()` from application-owned routes, channels, schedules, or other code executing inside a Flue-built server:
 
-const reviewer = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  cwd: '/workspace',
-}));
+```ts
+import { invoke } from '@flue/runtime';
+import summarize from './workflows/summarize.ts';
 
-export async function run({ init, payload }: FlueContext<{ document: string }>) {
-  const harness = await init(reviewer);
-  await harness.fs.writeFile('document.md', payload.document);
+const { runId } = await invoke(summarize, {
+  input: { text: 'Summarize this document.' },
+});
+```
 
+`invoke()` admits a real workflow run and returns after admission. The imported value must be the exact default export of a discovered workflow module. It does not run workflow route middleware and does not require an HTTP route.
+
+Use `dispatch(agent, { id, input })` for asynchronous input to a continuing agent instance. It returns a `dispatchId` and does not create workflow run history. Use `invoke(workflow, { input })` for one finite run; it returns a `runId`.
+
+### HTTP and SDK
+
+An HTTP-exposed workflow accepts its input as the JSON request body at `POST /workflows/:name`. The SDK provides the same routed boundary through `client.workflows.invoke(name, { input })`. Add `?wait=result` over HTTP, or `wait: 'result'` in the SDK, to wait for the terminal result.
+
+## Work with the harness
+
+The harness is ready when the Action starts. Use its default session for related operations and its filesystem or shell for workflow-controlled setup:
+
+```ts
+async run({ harness, input }) {
+  await harness.fs.writeFile('document.md', input.document);
   const session = await harness.session();
-  await session.prompt('Review document.md and write your findings to review.md.');
-
+  await session.prompt('Review document.md and write findings to review.md.');
   return { review: await harness.fs.readFile('review.md') };
 }
 ```
 
-`harness.fs` lets your application stage inputs and retrieve output files in the agent's workspace. Use `harness.shell(...)` when application code needs to prepare or inspect that workspace with a command before the agent works in it. These are workflow-controlled setup steps; they do not add messages to the session conversation.
+A session can also run skills, delegate tasks, and produce schema-backed structured results. See [Agent API](/docs/api/agent-api/), [Skills](/docs/guide/skills/), [Subagents](/docs/guide/subagents/), and [Sandboxes](/docs/guide/sandboxes/).
 
-The workspace available to a harness is determined by the agent's sandbox configuration. See [Sandboxes](/docs/guide/sandboxes/) for filesystem and execution environments.
+## Inspect runs
 
-### Sessions
+Every invocation creates a workflow run with a unique `runId`.
 
-A session is where the agent's work accumulates context. Use the default session when a later instruction should continue from earlier work:
+| Surface                                           | Use it for                                     |
+| ------------------------------------------------- | ---------------------------------------------- |
+| `flue logs <runId>`                               | Replay or follow run events from the CLI.      |
+| `GET /runs/<runId>`                               | Read the Durable Streams event stream.         |
+| `GET /runs/<runId>?meta`                          | Read the persisted `RunRecord`.                |
+| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known run.  |
+| `listRuns()` and `getRun()`                       | Build protected server-side inspection routes. |
 
-```ts title="src/workflows/investigate-incident.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+`RunRecord.input` and the `run_start.input` event contain the admitted workflow input. Inputs, results, logs, and model activity may be sensitive; authorize any published run-inspection surface.
 
-const investigator = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-}));
-
-export async function run({ init, payload }: FlueContext<{ incident: string }>) {
-  const harness = await init(investigator);
-  const session = await harness.session();
-
-  await session.prompt(`Analyze this incident:\n\n${payload.incident}`);
-  const response = await session.prompt('Now recommend the next three actions.');
-
-  return { recommendation: response.text };
-}
-```
-
-In addition to prompting, a session can run an available skill, delegate a task to a configured subagent, or execute a command that later agent work should know about. See [Skills](/docs/guide/skills/) for reusable procedures and [Subagents](/docs/guide/subagents/) for delegated work.
-
-### Structured results
-
-When a workflow needs dependable application data rather than prose, provide a schema for the result. The agent must return data that satisfies the schema before the workflow receives it:
-
-```ts title="src/workflows/classify-ticket.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
-import * as v from 'valibot';
-
-const triage = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-}));
-
-export async function run({ init, payload }: FlueContext<{ ticket: string }>) {
-  const harness = await init(triage);
-  const session = await harness.session();
-  const response = await session.prompt(payload.ticket, {
-    result: v.object({
-      priority: v.picklist(['low', 'medium', 'high']),
-      summary: v.string(),
-    }),
-  });
-
-  return response.data;
-}
-```
-
-Use structured results when later application code depends on specific fields, instead of parsing a textual answer. See the [Agent API](/docs/api/agent-api/) for result errors, operation options, and response types.
-
-## Managing workflow runs
-
-When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request that started it. This is useful for background work, live progress, debugging, and operational tooling.
-
-| Surface                                           | Use it for                                                                                                                                                         |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.                                                                                                 |
-| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                                                                                                                |
-| `GET /runs/<runId>?meta`                          | Read the workflow-run record as plain JSON.                                                                                                                        |
-| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run.                                                                                                             |
-| `listRuns()` from `@flue/runtime`                 | List workflow runs from your own protected server-side endpoints. See [compose your own admin endpoints](/docs/api/routing-api/#compose-your-own-admin-endpoints). |
-
-Run listing can reveal workflow payloads, results, model activity, and application logs. Only publish a listing surface behind an authorization boundary appropriate for that data.
-
-Only workflows create workflow runs. Direct HTTP prompts to an agent instance, and asynchronous input delivered through `dispatch(...)`, are operations in persistent agent sessions; they are not queried through workflow run history or `flue logs`.
-
-For event contents, structured logging, filtering, and telemetry export, see [Observability](/docs/guide/observability/). For securing workflow invocation and run endpoints, see [Routing](/docs/guide/routing/).
-
-## Next steps
-
-- [Agents](/docs/guide/building-agents/) — create and configure continuing agent instances.
-- [Agent API](/docs/api/agent-api/) — look up session operations, structured results, and workspace methods.
-- [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what the agent in a workflow can do and where it works.
-- [Routing](/docs/guide/routing/) — expose workflows over HTTP and protect their endpoints.
-- [Schedules](/docs/guide/schedules/) — invoke workflows on Cloudflare or Node.js schedules.
-- [Observability](/docs/guide/observability/) — inspect run events and connect execution to monitoring and tracing tools.
+Only workflows create runs. Direct agent prompts and `dispatch()` inputs belong to persistent agent sessions and do not appear in `/runs` or `flue logs`.

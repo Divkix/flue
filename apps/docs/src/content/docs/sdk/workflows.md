@@ -14,7 +14,7 @@ Starts a workflow run. Returns the run ID and the server-provided stream coordin
 
 ```ts
 const run = await client.workflows.invoke('summarize', {
-  payload: { text: 'Summarize this document.' },
+  input: { text: 'Summarize this document.' },
 });
 
 console.log(run.runId); // "run_01JX..."
@@ -28,7 +28,7 @@ Pass `wait: 'result'` to hold the request open until the run finishes and resolv
 
 ```ts
 const run = await client.workflows.invoke('summarize', {
-  payload: { text: 'Summarize this document.' },
+  input: { text: 'Summarize this document.' },
   wait: 'result',
 });
 
@@ -37,11 +37,11 @@ console.log(run.result); // the workflow's return value
 
 ### `WorkflowInvokeOptions`
 
-| Field     | Type          | Default | Description                                                      |
-| --------- | ------------- | ------- | ---------------------------------------------------------------- |
-| `payload` | `unknown`     | —       | Workflow-defined payload.                                        |
-| `wait`    | `'result'`    | —       | Wait for the run to finish and resolve with its terminal result. |
-| `signal`  | `AbortSignal` | —       | Cancel the HTTP request.                                         |
+| Field    | Type          | Default | Description                                                      |
+| -------- | ------------- | ------- | ---------------------------------------------------------------- |
+| `input`  | `unknown`     | —       | Workflow-defined input.                                          |
+| `wait`   | `'result'`    | —       | Wait for the run to finish and resolve with its terminal result. |
+| `signal` | `AbortSignal` | —       | Cancel the HTTP request.                                         |
 
 ### `WorkflowInvokeResult`
 

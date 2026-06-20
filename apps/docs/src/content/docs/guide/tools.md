@@ -93,7 +93,7 @@ export default createAgent(({ id: customerId }) => ({
 
 In this example, the model may choose an order ID to look up, but it cannot choose the customer used in the query. Your route must still authenticate the caller and ensure that they may access the selected agent `id`; see [Agents](/docs/guide/building-agents/) and [Routing](/docs/guide/routing/).
 
-The same principle applies in workflows. When a workflow establishes the authorized resource or credential for one invocation, it can provide the bounded tool while initializing its agent:
+The same principle applies in workflows. Configure bounded tools on the workflow's agent, and pass invocation-specific authorized identifiers through the Action input:
 
 ```ts title="src/workflows/review-orders.ts"
 const lookupCustomerOrder = defineTool({
@@ -106,7 +106,18 @@ const lookupCustomerOrder = defineTool({
   },
 });
 
-const harness = await init(agent, { tools: [lookupCustomerOrder] });
+const agent = createAgent(() => ({
+  model: 'anthropic/claude-haiku-4-5',
+  tools: [lookupCustomerOrder],
+}));
+
+export default createWorkflow({
+  agent,
+  input: v.object({ orderId: v.string() }),
+  async run({ harness, input }) {
+    return await (await harness.session()).prompt(`Review order ${input.orderId}.`);
+  },
+});
 ```
 
 Do not put credentials, tenant identifiers, or unrestricted destinations into model-selected tool arguments when trusted application code can supply them instead.
@@ -155,36 +166,34 @@ authorization design for them.
 An MCP server supplies remotely implemented tools. `connectMcpServer(...)` lists those tools and returns ordinary tool definitions, which you provide to agent work in the same way as your own custom tools.
 
 ```ts title="src/workflows/inventory-assistant.ts"
-import { connectMcpServer, createAgent, type FlueContext } from '@flue/runtime';
+import { connectMcpServer, createAgent, createWorkflow } from '@flue/runtime';
+import * as v from 'valibot';
 
 type Env = {
   INVENTORY_MCP_URL: string;
   INVENTORY_MCP_TOKEN: string;
 };
 
-const agent = createAgent(() => ({
+const inventory = await connectMcpServer('inventory', {
+  url: process.env.INVENTORY_MCP_URL!,
+  headers: { Authorization: `Bearer ${process.env.INVENTORY_MCP_TOKEN}` },
+});
+
+const agent = createAgent<Env>(() => ({
   model: 'anthropic/claude-haiku-4-5',
+  tools: inventory.tools,
 }));
 
-export async function run({ init, payload, env }: FlueContext<{ question: string }, Env>) {
-  const inventory = await connectMcpServer('inventory', {
-    url: env.INVENTORY_MCP_URL,
-    headers: {
-      Authorization: `Bearer ${env.INVENTORY_MCP_TOKEN}`,
-    },
-  });
-
-  try {
-    const harness = await init(agent, { tools: inventory.tools });
-    const session = await harness.session();
-    return await session.prompt(payload.question);
-  } finally {
-    await inventory.close();
-  }
-}
+export default createWorkflow({
+  agent,
+  input: v.object({ question: v.string() }),
+  async run({ harness, input }) {
+    return await (await harness.session()).prompt(input.question);
+  },
+});
 ```
 
-Provide MCP credentials and connection settings from trusted application code, then close the connection when the work using its tools finishes. Flue prefixes each MCP tool's model-facing name with its connection name; for example, `lookup_item` from this server becomes `mcp__inventory__lookup_item`.
+Provide MCP credentials and connection settings from trusted application code and close the connection during application shutdown. Flue prefixes each MCP tool's model-facing name with its connection name; for example, `lookup_item` from this server becomes `mcp__inventory__lookup_item`.
 
 ## Next steps
 

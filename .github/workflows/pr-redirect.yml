@@ -114,4 +114,4 @@ jobs:
         run: |
           node packages/cli/bin/flue.mjs run pr-redirect \
             --target node \
-            --payload "{\"prNumber\": $PR_NUMBER}"
+            --input "{\"prNumber\": $PR_NUMBER}"

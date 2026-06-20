@@ -67,8 +67,9 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const sandbox = await client.sandboxes.create(app, image);
  *
  * const agent = createAgent(() => ({ sandbox: modal(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
- * const harness = await init(agent);
- * const session = await harness.session();
+ * export default createWorkflow({ agent, async run({ harness }) {
+ *   return await (await harness.session()).prompt('Inspect the workspace.');
+ * }});
  * ```
  */
 import { createSandboxSessionEnv } from '@flue/runtime';
@@ -327,29 +328,32 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { ModalClient } from 'modal';
 import { modal } from '../sandboxes/modal'; // adjust path to match the user's layout
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-export async function run ({ init }: FlueContext) {
+const agent = createAgent(async () => {
   // ModalClient reads MODAL_TOKEN_ID / MODAL_TOKEN_SECRET (or ~/.modal.toml)
   // automatically.
   const client = new ModalClient();
   const app = await client.apps.fromName('my-flue-app', { createIfMissing: true });
   const image = client.images.fromRegistry('python:3.13-slim');
   const sandbox = await client.sandboxes.create(app, image);
-
-  const agent = createAgent(() => ({
+  return {
     sandbox: modal(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
-  }));
-  const harness = await init(agent);
-  const session = await harness.session();
+  };
+});
 
-  return await session.shell('uname -a');
-}
+export default createWorkflow({
+  agent,
+  run: async ({ harness }) => {
+    const session = await harness.session();
+    return await session.shell('uname -a');
+  },
+});
 ```
 
 Tip: if the user wants a faster start, prebuild a custom image with their

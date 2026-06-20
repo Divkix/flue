@@ -26,8 +26,9 @@
  * before adding any secret to the sandbox.
  */
 
-import { createAgent, type FlueContext, type FlueSession } from '@flue/runtime';
+import { createAgent, createWorkflow, type FlueSession } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
+import * as v from 'valibot';
 import {
 	closePullRequest,
 	commentOnDiscussion,
@@ -570,32 +571,28 @@ function extractJson(text: string): unknown {
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
-export async function run({ init, payload, log }: FlueContext) {
-	const prNumber = (payload as { prNumber?: number } | undefined)?.prNumber;
-	if (typeof prNumber !== 'number' || !Number.isInteger(prNumber)) {
-		throw new Error(`payload.prNumber required (got: ${JSON.stringify(payload)})`);
-	}
-
-	// Validate both tokens up front so we don't spend LLM tokens on a
-	// run that's guaranteed to fail when the deterministic phase tries
-	// to mutate.
-	if (!process.env.FREDKBOT_GITHUB_TOKEN) {
-		throw new Error('FREDKBOT_GITHUB_TOKEN env var is required.');
-	}
-	const ghToken = process.env.GITHUB_TOKEN;
-	if (!ghToken) {
-		throw new Error('GITHUB_TOKEN env var is required.');
-	}
-
-	// Only GH_TOKEN is passed to the sandbox. FREDKBOT_GITHUB_TOKEN
-	// intentionally stays in process.env so only `lib/github.ts` can read
-	// it — see the security note at the top of the file.
-	const agent = createAgent(() => ({
+const ghToken = process.env.GITHUB_TOKEN;
+const agent = createAgent(() => {
+	if (!ghToken) throw new Error('GITHUB_TOKEN env var is required.');
+	return {
 		sandbox: local({ env: { GH_TOKEN: ghToken } }),
 		model: 'anthropic/claude-opus-4-6',
-	}));
-	const harness = await init(agent);
-	const session = await harness.session();
+	};
+});
+
+export default createWorkflow({
+	agent,
+	input: v.object({ prNumber: v.pipe(v.number(), v.integer()) }),
+	async run({ harness, input, log }) {
+		const { prNumber } = input;
+
+		// Validate the privileged token before spending LLM tokens. It remains
+		// outside the sandbox allowlist and is read only by lib/github.ts.
+		if (!process.env.FREDKBOT_GITHUB_TOKEN) {
+			throw new Error('FREDKBOT_GITHUB_TOKEN env var is required.');
+		}
+
+		const session = await harness.session();
 
 	// ─── LLM phase ──────────────────────────────────────────────────────
 	const pr = await fetchPullRequest(session, prNumber);
@@ -702,6 +699,7 @@ export async function run({ init, payload, log }: FlueContext) {
 	// and a maintainer can re-trigger by removing-and-re-adding it.
 	await removeLabelIfPresent(prNumber, TRIAGE_LABEL);
 
-	log.info('pr-redirect: done', { prNumber, action: decision.action, destinationUrl });
-	return { action: decision.action, destinationUrl, prNumber };
-}
+		log.info('pr-redirect: done', { prNumber, action: decision.action, destinationUrl });
+		return { action: decision.action, destinationUrl, prNumber };
+	},
+});

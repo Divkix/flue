@@ -322,9 +322,9 @@ describeMongo('mongodb() integration', () => {
 			runId: 'large',
 			workflowName: 'w',
 			startedAt: new Date().toISOString(),
-			payload: { body },
+			input: { body },
 		});
-		expect((await value.runStore.getRun('large'))?.payload).toEqual({ body });
+		expect((await value.runStore.getRun('large'))?.input).toEqual({ body });
 		await cleanup();
 	});
 });

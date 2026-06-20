@@ -39,7 +39,7 @@ Streams workflow-run events via the [Durable Streams](https://durablestreams.com
 
 ```ts
 const run = await client.workflows.invoke('summarize', {
-  payload: { text: 'Hello' },
+  input: { text: 'Hello' },
 });
 
 for await (const event of client.runs.stream(run.runId, { live: true })) {

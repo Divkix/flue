@@ -120,20 +120,26 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+   import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
    import { cloudflareSandbox } from '@flue/runtime/cloudflare';
    import { getSandbox } from '@cloudflare/sandbox';
+   import * as v from 'valibot';
 
    export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-   export async function run ({ init, id, env, payload }: FlueContext<{ message: string }>) {
-     const sandbox = cloudflareSandbox(getSandbox(env.Sandbox, id));
-     const agent = createAgent(() => ({ sandbox, model: 'anthropic/claude-opus-4-7' }));
-     const harness = await init(agent);
-     const session = await harness.session();
+   const agent = createAgent(({ id, env }) => ({
+     sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
+     model: 'anthropic/claude-opus-4-7',
+   }));
 
-     return await session.prompt(payload.message);
-   }
+   export default createWorkflow({
+     agent,
+     input: v.object({ message: v.string() }),
+     run: async ({ harness, input }) => {
+       const session = await harness.session();
+       return await session.prompt(input.message);
+     },
+   });
    ```
 
    Pass the result of `getSandbox()` through `cloudflareSandbox(...)` before

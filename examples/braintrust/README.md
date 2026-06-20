@@ -47,7 +47,7 @@ function compatibleEvent(event: FlueEvent): unknown {
   if (event.type === 'run_resume') {
     if (observedRuns.has(event.runId)) return event;
     observedRuns.add(event.runId);
-    return { ...event, type: 'run_start', payload: undefined };
+    return { ...event, type: 'run_start', input: undefined, payload: undefined };
   }
   if (
     event.type === 'operation_start' ||
@@ -66,7 +66,7 @@ function compatibleEvent(event: FlueEvent): unknown {
 }
 ```
 
-Braintrust 3.17 expects `tool_call` for a terminal tool event and does not consume Flue's `run_resume`. The bridge translates recovery only when the current process did not observe the original workflow start; otherwise `run_end` closes the existing span. This compatibility fallback does not preserve Flue's distinct recovery semantics or durably continue a trace across isolates.
+Braintrust 3.17 expects `tool_call` for a terminal tool event, reads workflow input from the legacy synthetic `run_start.payload` field, and does not consume Flue's `run_resume`. Normal Flue `run_start` events keep their current public `input` shape; only a recovery event that lacks an observed start is synthesized with both `input` and `payload` explicitly undefined. This fallback does not preserve Flue's distinct recovery semantics or durably continue a trace across isolates.
 
 ## Trace shape
 
@@ -93,7 +93,7 @@ Workflows are the only Flue executions represented as runs. Direct or dispatched
 
 ## Sensitive content
 
-Braintrust's observer is content-bearing. It can export workflow payloads and results, model messages and output, reasoning, system prompts, tool definitions and values, task content, errors, and correlation metadata. Use Braintrust's masking support and review retention and access requirements before enabling it for sensitive workloads. See the [Braintrust ecosystem guide](https://flueframework.com/docs/ecosystem/tooling/braintrust/).
+Braintrust's observer is content-bearing. Braintrust 3.17 does not currently read Flue's public `run_start.input`, but it can export workflow results, model messages and output, reasoning, system prompts, tool definitions and values, task content, errors, and correlation metadata. Use Braintrust's masking support and review retention and access requirements before enabling it for sensitive workloads. See the [Braintrust ecosystem guide](https://flueframework.com/docs/ecosystem/tooling/braintrust/).
 
 ## Running it
 

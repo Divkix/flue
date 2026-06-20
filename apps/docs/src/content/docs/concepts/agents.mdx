@@ -66,10 +66,13 @@ const agent = createAgent(() => ({
 	skills,
 }));
 
-// Then drive it from your own code.
-const harness = await init(agent);
-const session = await harness.session();
-const { text } = await session.prompt('Triage this incoming issue.');
+// Bind finite orchestration to that policy.
+const workflow = createWorkflow({
+	agent,
+	async run({ harness }) {
+		return await (await harness.session()).prompt('Triage this incoming issue.');
+	},
+});
 ```
 
 A Flue agent is **programmable**: you assemble and drive it in code, choosing its model, instructions, tools, skills, and environment, then operating it through an API instead of a chat app, or TUI, or different config files on your local machine.

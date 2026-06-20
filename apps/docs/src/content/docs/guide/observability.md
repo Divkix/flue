@@ -10,33 +10,36 @@ Observability helps you understand whether Flue work completed, failed, became s
 
 Each workflow invocation has a `runId`. Its run history records the completed result or error and the observable activity produced while the workflow executes.
 
-Use the workflow context's `log` methods to record application-specific facts that runtime activity alone cannot explain. For example, a summarization workflow can report the size of the accepted document and the usage of the completed operation:
+Use the Action context's `log` methods to record application-specific facts that runtime activity alone cannot explain. For example, a summarization workflow can report the size of the accepted document and the usage of the completed operation:
 
 ```ts title="src/workflows/summarize.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+import { createAgent, createWorkflow } from '@flue/runtime';
+import * as v from 'valibot';
 
 const summarizer = createAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Summarize the supplied document clearly and concisely.',
 }));
 
-export async function run({ init, log, payload }: FlueContext<{ text: string }>) {
-  log.info('Summarization requested', { characters: payload.text.length });
+export default createWorkflow({
+  agent: summarizer,
+  input: v.object({ text: v.string() }),
 
-  const harness = await init(summarizer);
-  const session = await harness.session();
-  const response = await session.prompt(payload.text);
+  async run({ harness, log, input }) {
+    log.info('Summarization requested', { characters: input.text.length });
+    const response = await (await harness.session()).prompt(input.text);
 
-  log.info('Summarization completed', {
-    tokens: response.usage.totalTokens,
-    cost: response.usage.cost.total,
-  });
+    log.info('Summarization completed', {
+      tokens: response.usage.totalTokens,
+      cost: response.usage.cost.total,
+    });
 
-  return { summary: response.text };
-}
+    return { summary: response.text };
+  },
+});
 ```
 
-`log.info(...)`, `log.warn(...)`, and `log.error(...)` accept structured attributes. Use attributes for values that you may later search, aggregate, or forward to a monitoring system. See [`ctx.log`](/docs/api/agent-api/#ctxlog) in the Agent API for the `FlueLogger` signatures.
+`log.info(...)`, `log.warn(...)`, and `log.error(...)` accept structured attributes. Use attributes for values that you may later search, aggregate, or forward to a monitoring system. See [`ActionContext`](/docs/api/action-api/#actioncontext) for the Action logging contract.
 
 When a workflow invoked through a running application reports its `runId`, use that identifier to inspect the workflow run from the command line:
 
@@ -97,7 +100,7 @@ You can also consume `observe(...)` directly when these integrations do not matc
 
 ## Export telemetry safely
 
-Runtime events can contain workflow payloads, prompts, model messages, logs, tool values, errors, and application-owned metadata. Flue replaces image data in recognized content blocks with an omission sentinel before events are observed or persisted, but arbitrary payloads, log attributes, tool details, and results still require an application-owned sanitization policy.
+Runtime events can contain workflow inputs, prompts, model messages, logs, tool values, errors, and application-owned metadata. Flue replaces image data in recognized content blocks with an omission sentinel before events are observed or persisted, but arbitrary inputs, log attributes, tool details, and results still require an application-owned sanitization policy.
 
 Start with outcome-oriented signals: failed workflows, explicit application error logs, slow operations, and completed model usage. A model turn or tool call may fail before an agent recovers, so treating every nested error as an incident can create noisy alerts. When aggregating usage, sum model-turn leaf values rather than operation or compaction roll-ups; nested duration values can overlap and should not be summed.
 

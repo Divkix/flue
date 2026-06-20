@@ -50,7 +50,7 @@ npx flue connect support-assistant ticket-8472
 Use `flue run` for one finite workflow invocation:
 
 ```bash
-npx flue run summarize-ticket --payload '{"ticket":"Ticket details"}'
+npx flue run summarize-ticket --input '{"ticket":"Ticket details"}'
 ```
 
 These commands use private local execution and do not pass through application ingress middleware. Deployed applications instead receive input through their published routes and transports. See [`flue connect`](/docs/cli/connect/) and [`flue run`](/docs/cli/run/) for their exact contracts.

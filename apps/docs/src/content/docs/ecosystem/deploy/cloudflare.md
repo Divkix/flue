@@ -33,35 +33,35 @@ npm install -D @flue/cli wrangler
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 const translator = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
-export async function run({ init, payload }: FlueContext<{ text: string; language: string }>) {
-  const harness = await init(translator);
-  const session = await harness.session();
+export default createWorkflow({
+  agent: translator,
+  input: v.object({ text: v.string(), language: v.string() }),
 
-  const { data } = await session.prompt(
-    `Translate this to ${payload.language}: "${payload.text}"`,
-    {
+  async run({ harness, input }) {
+    const { data } = await (
+      await harness.session()
+    ).prompt(`Translate this to ${input.language}: "${input.text}"`, {
       result: v.object({
         translation: v.string(),
         confidence: v.picklist(['low', 'medium', 'high']),
       }),
-    },
-  );
-
-  return data;
-}
+    });
+    return data;
+  },
+});
 ```
 
 A few things to note:
 
 - **`route`** — Export Hono middleware to expose this workflow via HTTP. It may perform authentication before calling `next()`.
-- **`createAgent(...)` + `init(agent)`** — Created agents declare model and sandbox configuration; workflows initialize them only when needed. `init(agent)` fails unless its created agent config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`createAgent(...)` + `createWorkflow(...)`** — The required workflow agent declares model and sandbox policy. Flue initializes its harness for each run. By default, it receives a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Configure Durable Object migrations
@@ -251,9 +251,16 @@ const triager = defineAgentProfile({
 });
 const support = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] }));
 
-const harness = await init(support);
-const session = await harness.session();
-await session.task('Help me reset my password', { agent: 'triager' });
+export default createWorkflow({
+  agent: support,
+  async run({ harness }) {
+    return await (
+      await harness.session()
+    ).task('Help me reset my password', {
+      agent: 'triager',
+    });
+  },
+});
 ```
 
 ## Using the sandbox
@@ -263,31 +270,33 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 const reporter = createAgent(() => ({ model: 'openai/gpt-5.5' }));
 
-export async function run({ init, payload }: FlueContext<{ topic: string }>) {
-  const harness = await init(reporter);
-  const session = await harness.session();
+export default createWorkflow({
+  agent: reporter,
+  input: v.object({ topic: v.string() }),
 
-  // The agent has a full virtual filesystem and shell.
-  // Set up context files before prompting.
-  await session.shell(`mkdir -p /workspace/data`);
-  await session.shell(`cat > /workspace/data/config.json << 'EOF'
+  async run({ harness, input }) {
+    const session = await harness.session();
+    await session.shell(`mkdir -p /workspace/data`);
+    await session.shell(`cat > /workspace/data/config.json << 'EOF'
 {
   "rules": ["Be concise", "Use bullet points", "Cite sources"],
   "tone": "professional"
 }
 EOF`);
 
-  return await session.prompt(
-    `Read the config in /workspace/data/config.json.
-     Generate a report about: ${payload.topic}`,
-  );
-}
+    return await session.prompt(
+      `Read the config in /workspace/data/config.json.
+       Generate a report about: ${input.topic}`,
+    );
+  },
+});
 ```
 
 The agent can use its built-in tools — grep, glob, read — to search and read these files. This is still running on a virtual sandbox (no container), so it's fast and cheap.
@@ -299,26 +308,31 @@ For support agents, you can seed Flue's default virtual sandbox with the knowled
 `.flue/workflows/support.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 const support = createAgent(() => ({ model: 'openrouter/moonshotai/kimi-k2.6' }));
 
-export async function run({ init, payload }: FlueContext<{ message: string }>) {
-  const harness = await init(support);
-  const session = await harness.session();
+export default createWorkflow({
+  agent: support,
+  input: v.object({ message: v.string() }),
 
-  await session.fs.writeFile(
-    '/workspace/articles/reset-password.md',
-    '# Reset your password\n\nUse the account settings page to request a password reset email.',
-  );
+  async run({ harness, input }) {
+    await harness.fs.writeFile(
+      '/workspace/articles/reset-password.md',
+      '# Reset your password\n\nUse the account settings page to request a password reset email.',
+    );
 
-  return await session.prompt(
-    `You are a support agent. Search the workspace for articles relevant
-    to this request, then write a helpful response.\n\nCustomer: ${payload.message}`,
-  );
-}
+    return await (
+      await harness.session()
+    ).prompt(
+      `You are a support agent. Search the workspace for articles relevant
+      to this request, then write a helpful response.\n\nCustomer: ${input.message}`,
+    );
+  },
+});
 ```
 
 This remains the default just-bash virtual sandbox: it starts quickly, supports shell and filesystem tools, and requires no Worker Loader binding. If an application needs durable external storage or a full Linux environment, choose and own a sandbox adapter appropriate to that requirement.
@@ -484,7 +498,7 @@ All Cloudflare workflow invocations use the same Fiber-backed durable admission 
 
 External effects remain application-owned. An interruption can leave the outcome of already-started model or tool activity uncertain, and an explicit caller retry can repeat effects. For dispatched agent work, correlate effects with `dispatchId` or an application-level idempotency key. Direct attached prompts do not expose a public receipt or replay API.
 
-Flue persists workflow invocation payloads with workflow run records before admitted work starts so operators can inspect the original input after an interruption. Flue does not automatically retry interrupted workflows. The caller or application should decide whether retry is appropriate and explicitly invoke the workflow again when needed. Use an application-level idempotency key when a repeated invocation may encounter external side effects from an earlier attempt. Agent submission payloads are likewise durable application data while queued and running. Settled submission data is retained indefinitely in this beta release. Dispatch receipt rows persist indefinitely as well, providing duplicate-delivery protection for repeated forwarding of one `dispatchId`; there is no public submission lookup API. Treat persisted inputs as sensitive: do not submit secrets unless your application retention and access policy permits storing them.
+Flue persists workflow inputs with workflow run records before admitted work starts so operators can inspect the original input after an interruption. Flue does not automatically retry interrupted workflows. The caller or application should decide whether retry is appropriate and explicitly invoke the workflow again when needed. Use an application-level idempotency key when a repeated invocation may encounter external side effects from an earlier attempt. Agent submission payloads are likewise durable application data while queued and running. Settled submission data is retained indefinitely in this beta release. Dispatch receipt rows persist indefinitely as well, providing duplicate-delivery protection for repeated forwarding of one `dispatchId`; there is no public submission lookup API. Treat persisted inputs as sensitive: do not submit secrets unless your application retention and access policy permits storing them.
 
 When Flue terminalizes an admitted interrupted workflow run, it emits `run_resume` before `run_end`, including when the interruption happened before live observers received `run_start`. This is recovery of terminal handling, not resumed or retried workflow code. Flue does not automatically propagate a trace carrier with dispatched input or preserve the original attached direct request after durable admission. For trace interpretation and application-owned HTTP extraction, see [OpenTelemetry](/docs/ecosystem/tooling/opentelemetry/#attach-application-trace-context).
 

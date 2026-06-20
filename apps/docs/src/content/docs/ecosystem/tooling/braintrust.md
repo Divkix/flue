@@ -64,11 +64,11 @@ See [Observability](/docs/guide/observability/#choose-an-observability-provider)
 
 Model spans include token usage and estimated cost where available. Workflow traces carry `runId`; persistent-agent traces retain agent instance, session, operation, and optional `dispatchId` correlation. See [Observability](/docs/guide/observability/) for Flue's identity and observer model.
 
-Braintrust 3.17 expects the previous `tool_call` name for terminal tool events and does not consume `run_resume`. The generated bridge translates tool events and creates a recovery root only when the current isolate did not observe the original workflow start; otherwise the existing workflow span remains open for `run_end`. This fallback does not preserve Flue's distinct recovery semantics or durably continue a trace across isolates. Re-check these translations before upgrading Braintrust.
+Braintrust 3.17 expects the previous `tool_call` name for terminal tool events, reads workflow input from the legacy synthetic `run_start.payload` field, and does not consume `run_resume`. Normal Flue `run_start` events retain their current public `input` shape. The generated bridge translates tool events and creates a payload-less synthetic recovery start only when the current isolate did not observe the original workflow start; otherwise the existing workflow span remains open for `run_end`. This fallback does not preserve Flue's distinct recovery semantics or durably continue a trace across isolates. Re-check these translations before upgrading Braintrust.
 
 ## Protect sensitive content
 
-Braintrust tracing is content-bearing. Its observer can export workflow payloads and results, model messages and output, reasoning, system prompts, tool definitions and values, task prompts and results, errors, and correlation metadata.
+Braintrust tracing is content-bearing. Braintrust 3.17 does not currently read Flue's public `run_start.input`, but its observer can export workflow results, model messages and output, reasoning, system prompts, tool definitions and values, task prompts and results, errors, and correlation metadata. Reassess workflow-input export when upgrading the integration.
 
 Review retention, access, privacy, and compliance requirements before enabling it in production. Use Braintrust's `setMaskingFunction(...)` before initialization when content requires redaction, and test the application-specific masker against representative prompts, reasoning, tool data, errors, secrets, and personal information.
 

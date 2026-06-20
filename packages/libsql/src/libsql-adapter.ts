@@ -1344,7 +1344,7 @@ class LibsqlRunStore implements RunStore {
 				input.runId,
 				input.workflowName,
 				input.startedAt,
-				input.payload !== undefined ? JSON.stringify(input.payload) : null,
+				input.input !== undefined ? JSON.stringify(input.input) : null,
 			],
 		);
 	}
@@ -1380,7 +1380,7 @@ class LibsqlRunStore implements RunStore {
 			workflowName: String(row.workflow_name),
 			status: row.status as RunStatus,
 			startedAt: String(row.started_at),
-			...(row.payload != null ? { payload: JSON.parse(String(row.payload)) } : {}),
+			...(row.payload != null ? { input: JSON.parse(String(row.payload)) } : {}),
 			...(row.ended_at != null ? { endedAt: String(row.ended_at) } : {}),
 			...(row.is_error != null ? { isError: parseSqliteBoolean(row.is_error) } : {}),
 			...(row.duration_ms != null ? { durationMs: Number(row.duration_ms) } : {}),

@@ -51,7 +51,7 @@ export function createOpenTelemetryObserver(
 						attributes: {
 							...identifiers(event),
 							'flue.workflow.name': event.workflowName,
-							...contentAttribute('flue.workflow.payload', exportedEvent?.payload),
+							...contentAttribute('flue.workflow.input', exportedEvent?.input),
 						},
 					},
 				),

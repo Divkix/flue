@@ -428,6 +428,9 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.12.22
+      valibot:
+        specifier: ^1.0.0
+        version: 1.4.0(typescript@6.0.3)
     devDependencies:
       '@flue/cli':
         specifier: workspace:*
@@ -490,6 +493,9 @@ importers:
       react-dom:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
+      valibot:
+        specifier: ^1.0.0
+        version: 1.4.0(typescript@6.0.3)
     devDependencies:
       '@flue/cli':
         specifier: workspace:*

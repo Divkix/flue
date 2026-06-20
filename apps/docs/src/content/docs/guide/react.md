@@ -99,7 +99,7 @@ export function Report() {
 
   async function generate() {
     const invocation = await flue.workflows.invoke('weekly-report', {
-      payload: { week: 'current' },
+      input: { week: 'current' },
     });
     setRunId(invocation.runId);
   }

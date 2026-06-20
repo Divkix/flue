@@ -14,6 +14,8 @@ For example, `flue docs search "durable execution"` searches with the query `dur
 <!-- flue-docs-catalog:start -->
 
 ```text
+api/action-api -- Action API
+  Reference for defining reusable finite Actions with @flue/runtime.
 api/agent-api -- Agent API
   Reference for defining agents and running agent operations with @flue/runtime.
 api/data-persistence-api -- Data Persistence API
@@ -30,6 +32,8 @@ api/sandbox-api -- Sandbox Adapter API
   Adapt a provider sandbox SDK into Flue's public sandbox contract.
 api/streaming-protocol -- Streaming Protocol
   Reference for reading Flue agent and workflow event streams over Durable Streams.
+api/workflow-api -- Workflow API
+  Reference for creating and invoking workflows with @flue/runtime.
 cli/add -- flue add
   Reference for discovering and applying Flue implementation blueprints.
 cli/build -- flue build
@@ -138,7 +142,7 @@ guide/targets/node -- Node.js
 guide/tools -- Tools
   Give agents application capabilities through custom tools and MCP servers.
 guide/workflows -- Workflows
-  Create finite agent-backed operations, run them, and inspect their outcomes.
+  Create finite agent-backed operations from inline or reusable Actions.
 introduction/why-flue -- Why Flue?
   Build autonomous AI agents and powerful workflows with a programmable TypeScript harness, and run them anywhere.
 reference/configuration -- Configuration

@@ -7,7 +7,7 @@ lastReviewedAt: 2026-05-30
 ## Synopsis
 
 ```bash
-flue run <workflow> [--target node] [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]
+flue run <workflow> [--target node] [--input <json>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]
 ```
 
 ## Description
@@ -24,14 +24,14 @@ A workflow invocation is a finite run with a run ID. Use `flue connect` for inte
 
 ## Options
 
-| Option             | Default                                                    | Description                                                                                                                         |
-| ------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `--payload <json>` | `{}`                                                       | Supply the workflow payload as JSON.                                                                                                |
-| `--target node`    | Configuration value                                        | Select the supported local execution target.                                                                                        |
-| `--root <path>`    | Selected config-file directory, or config search directory | Select the project root.                                                                                                            |
-| `--output <path>`  | `<root>/dist`                                              | Select the build output directory.                                                                                                  |
-| `--config <path>`  | Auto-discovered `flue.config.*`                            | Select a configuration file.                                                                                                        |
-| `--env <path>`     | `<config-base>/.env`, when present                         | Select one alternate `.env`-format file loaded before configuration. Relative paths resolve from `<config-base>`. Shell values win. |
+| Option            | Default                                                    | Description                                                                                                                         |
+| ----------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `--input <json>`  | `{}`                                                       | Supply the workflow input as JSON.                                                                                                  |
+| `--target node`   | Configuration value                                        | Select the supported local execution target.                                                                                        |
+| `--root <path>`   | Selected config-file directory, or config search directory | Select the project root.                                                                                                            |
+| `--output <path>` | `<root>/dist`                                              | Select the build output directory.                                                                                                  |
+| `--config <path>` | Auto-discovered `flue.config.*`                            | Select a configuration file.                                                                                                        |
+| `--env <path>`    | `<config-base>/.env`, when present                         | Select one alternate `.env`-format file loaded before configuration. Relative paths resolve from `<config-base>`. Shell values win. |
 
 ## Output and events
 
@@ -47,7 +47,7 @@ The printed run ID identifies this workflow invocation in inline output and CI l
 
 ```bash
 flue run hello --target node
-flue run summarize --target node --payload '{"text":"hello"}' --env .env.staging
+flue run summarize --target node --input '{"text":"hello"}' --env .env.staging
 ```
 
 See [Workflows](/docs/guide/workflows/) for authoring and invoking workflows.

@@ -67,7 +67,9 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *   sandbox: exedev({ host: 'maple-dune.exe.xyz' }),
  *   model: 'anthropic/claude-sonnet-4-6',
  * }));
- * const harness = await init(agent);
+ * export default createWorkflow({ agent, async run({ harness }) {
+ *   return await (await harness.session()).prompt('Inspect the workspace.');
+ * }});
  * ```
  *
  * @example Create a VM before wrapping it
@@ -75,15 +77,13 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { createExeVm, deleteExeVm, exedev } from './sandboxes/exedev';
  *
  * const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN! });
- * try {
- *   const agent = createAgent(() => ({
- *     sandbox: exedev(vm),
- *     model: 'anthropic/claude-sonnet-4-6',
- *   }));
- *   const harness = await init(agent);
- * } finally {
- *   await deleteExeVm({ apiToken: process.env.EXE_API_TOKEN!, name: vm.name });
- * }
+ * const agent = createAgent(() => ({
+ *   sandbox: exedev(vm),
+ *   model: 'anthropic/claude-sonnet-4-6',
+ * }));
+ * export default createWorkflow({ agent, async run({ harness }) {
+ *   return await (await harness.session()).prompt('Inspect the workspace.');
+ * }});
  * ```
  */
 import {
@@ -728,84 +728,84 @@ no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
 hostname before wiring the adapter.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from "@flue/runtime";
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
 import { exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-export async function run ({ init, env }: FlueContext) {
-  const agent = createAgent(() => ({
-    sandbox: exedev({ host: env.EXE_VM_HOST }),
-    model: "anthropic/claude-sonnet-4-6",
-  }));
-  const harness = await init(agent);
-  const session = await harness.session();
+const agent = createAgent(({ env }) => ({
+  sandbox: exedev({ host: env.EXE_VM_HOST }),
+  model: "anthropic/claude-sonnet-4-6",
+}));
 
-  return await session.shell("uname -a");
-}
+export default createWorkflow({
+  agent,
+  run: async ({ harness }) => {
+    const session = await harness.session();
+    return await session.shell("uname -a");
+  },
+});
 ```
 
 ### Fresh VM
 
 Only use this when the user explicitly asks to create a VM and provides an
-API token with `new` permission. The VM is created before `createAgent(...)` and
-then passed to `exedev(...)`.
+API token with `new` permission. The bound agent initializer creates the VM and
+passes it to `exedev(...)`.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from "@flue/runtime";
-import { createExeVm, deleteExeVm, exedev } from "../sandboxes/exedev";
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+import { createExeVm, exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-export async function run ({ init, env }: FlueContext) {
+const agent = createAgent(async ({ env }) => {
   const vm = await createExeVm({ apiToken: env.EXE_API_TOKEN });
+  return {
+    sandbox: exedev(vm),
+    model: "anthropic/claude-sonnet-4-6",
+  };
+});
 
-  try {
-    const agent = createAgent(() => ({
-      sandbox: exedev(vm),
-      model: "anthropic/claude-sonnet-4-6",
-    }));
-    const harness = await init(agent);
+export default createWorkflow({
+  agent,
+  run: async ({ harness }) => {
     const session = await harness.session();
-
     return await session.shell("uname -a");
-  } finally {
-    await deleteExeVm({ apiToken: env.EXE_API_TOKEN, name: vm.name });
-  }
-}
+  },
+});
 ```
 
 ### Cloned VM
 
 Only use this when the user explicitly asks to clone a base VM and provides
-an API token with `cp` permission. If you delete the clone afterwards, the
-token also needs `rm` permission.
+an API token with `cp` permission. If the project also deletes the clone, the
+token needs `rm` permission.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from "@flue/runtime";
-import { cloneExeVm, deleteExeVm, exedev } from "../sandboxes/exedev";
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+import { cloneExeVm, exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-export async function run ({ init, env }: FlueContext) {
+const agent = createAgent(async ({ env }) => {
   const vm = await cloneExeVm({
     apiToken: env.EXE_API_TOKEN,
     source: "my-dev-vm",
   });
+  return {
+    sandbox: exedev(vm),
+    model: "anthropic/claude-sonnet-4-6",
+  };
+});
 
-  try {
-    const agent = createAgent(() => ({
-      sandbox: exedev(vm),
-      model: "anthropic/claude-sonnet-4-6",
-    }));
-    const harness = await init(agent);
+export default createWorkflow({
+  agent,
+  run: async ({ harness }) => {
     const session = await harness.session();
-
     return await session.shell("uname -a");
-  } finally {
-    await deleteExeVm({ apiToken: env.EXE_API_TOKEN, name: vm.name });
-  }
-}
+  },
+});
 ```
 
 ## Verify

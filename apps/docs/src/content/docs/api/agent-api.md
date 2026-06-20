@@ -19,7 +19,6 @@ import {
   dispatch,
   type AgentCreateContext,
   type AgentDispatchRequest,
-  type AgentHarnessOptions,
   type AgentProfile,
   type AgentRuntimeConfig,
   type BashFactory,
@@ -28,7 +27,6 @@ import {
   type CreatedAgent,
   type DispatchReceipt,
   type FileStat,
-  type FlueContext,
   type FlueFs,
   type FlueHarness,
   type FlueLogger,
@@ -78,6 +76,7 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                     |
 | `skills`        | `Skill[]`                   | Registered skills available to initialized sessions.                                                                                                                        |
 | `tools`         | `ToolDefinition[]`          | Custom model-callable tools available to initialized sessions.                                                                                                              |
+| `actions`       | `ActionDefinition[]`        | Reusable Actions exposed to the model as framework-managed tools.                                                                                                           |
 | `subagents`     | `AgentProfile[]`            | Named profiles available for delegated `session.task()` operations.                                                                                                         |
 | `thinkingLevel` | `ThinkingLevel`             | Default reasoning effort. Individual operations may override this value.                                                                                                    |
 | `compaction`    | `false \| CompactionConfig` | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed. |
@@ -185,24 +184,23 @@ interface McpServerConnection {
 ## `createAgent(...)`
 
 ```ts
-function createAgent<TPayload = unknown, TEnv = Record<string, any>>(
+function createAgent<TEnv = Record<string, any>>(
   initialize: (
-    context: AgentCreateContext<TPayload, TEnv>,
+    context: AgentCreateContext<TEnv>,
   ) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>,
-): CreatedAgent<TPayload, TEnv>;
+): CreatedAgent<TEnv>;
 ```
 
-Creates an agent initializer. Default-export the returned value from an `agents/<name>.ts` module to define an addressable agent, or pass it to `ctx.init()` inside a workflow.
+Creates an agent initializer. Default-export the returned value from an `agents/<name>.ts` module to define an addressable agent, or bind it to a Created Workflow.
 
-The initializer runs whenever the runtime initializes a harness from the created agent: when a workflow calls `ctx.init()`, and when the runtime prepares an addressable agent interaction. Do not treat it as a one-time constructor for a persistent agent instance id. Return a runtime config object with `model: '<provider>/<model>'`, `model: false`, or a profile with its own model field.
+The initializer runs whenever a runner initializes a root harness from the created agent. Do not treat it as a one-time constructor for a persistent agent instance id. Return a runtime config object with `model: '<provider>/<model>'`, `model: false`, or a profile with its own model field.
 
 #### `AgentCreateContext`
 
-| Field     | Type                    | Description                                                                 |
-| --------- | ----------------------- | --------------------------------------------------------------------------- |
-| `id`      | `string`                | Agent instance id, or workflow run id when initialized with `ctx.init()`.   |
-| `env`     | `TEnv`                  | Platform environment bindings supplied by the runtime.                      |
-| `payload` | `TPayload \| undefined` | Workflow payload when initialized with `ctx.init()`; otherwise `undefined`. |
+| Field | Type     | Description                                            |
+| ----- | -------- | ------------------------------------------------------ |
+| `id`  | `string` | Agent instance ID or workflow run ID.                  |
+| `env` | `TEnv`   | Platform environment bindings supplied by the runtime. |
 
 #### `AgentRuntimeConfig`
 
@@ -214,6 +212,7 @@ The initializer runs whenever the runtime initializes a harness from the created
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                                                                                                                                   |
 | `skills`        | `Skill[]`                   | Additional registered skills available to initialized sessions.                                                                                                                                                                                                                           |
 | `tools`         | `ToolDefinition[]`          | Additional custom model-callable tools available to initialized sessions.                                                                                                                                                                                                                 |
+| `actions`       | `ActionDefinition[]`        | Additional reusable Actions exposed as framework-managed model tools.                                                                                                                                                                                                                     |
 | `subagents`     | `AgentProfile[]`            | Additional named profiles available for delegated `session.task()` operations.                                                                                                                                                                                                            |
 | `thinkingLevel` | `ThinkingLevel`             | Default reasoning effort. Individual operations may override this value.                                                                                                                                                                                                                  |
 | `compaction`    | `false \| CompactionConfig` | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed.                                                                                                               |
@@ -249,88 +248,29 @@ interface DispatchReceipt {
 
 Accepts input for asynchronous delivery to a continuing agent instance. The created-agent overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
 
-| Field        | Description                                                                                               |
-| ------------ | --------------------------------------------------------------------------------------------------------- |
-| `agent`      | Discovered agent module name for the named overload.                                                      |
-| `id`         | Target agent instance id.                                                                                 |
-| `input`      | Required JSON-like payload. Use `null` for an intentional empty payload. Flue snapshots it when accepted. |
-| `dispatchId` | Generated delivery identifier returned in the receipt. This is not a workflow `runId`.                    |
-| `acceptedAt` | ISO timestamp assigned when dispatch admission begins.                                                    |
+| Field        | Description                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| `agent`      | Discovered agent module name for the named overload.                                                  |
+| `id`         | Target agent instance id.                                                                             |
+| `input`      | Required JSON-like input. Use `null` for an intentional empty value. Flue snapshots it when accepted. |
+| `dispatchId` | Generated delivery identifier returned in the receipt. This is not a workflow `runId`.                |
+| `acceptedAt` | ISO timestamp assigned when dispatch admission begins.                                                |
 
 `await dispatch(...)` resolves when the current runtime accepts and queues the input. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent instance: it does not create workflow-run history and does not appear in `/runs` or `flue logs`.
 
 Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default; with a durable `db.ts` adapter, dispatches survive restarts and are reconciled on the replacement process. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts, and reconciles interruptions conservatively. Both targets retry only when replay safety is provable; external effects still require application-level idempotency. See [Durable Agents](/docs/concepts/durable-execution/) for recovery details, and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for target-specific setup.
 
-## `FlueContext`
-
-```ts
-interface FlueContext<TPayload = unknown, TEnv = Record<string, any>> {
-  readonly id: string;
-  readonly payload: TPayload;
-  readonly env: TEnv;
-  readonly req: Request | undefined;
-  readonly log: FlueLogger;
-  init(agent: CreatedAgent<TPayload, TEnv>, options?: AgentHarnessOptions): Promise<FlueHarness>;
-}
-```
-
-The execution context passed to workflow handlers. Pass type parameters to type `payload` and `env` (for example, the `Env` interface generated by `wrangler types`). The typing is compile-time only — there is no runtime validation of `payload`.
-
-| Member    | Type                   | Description                                                                              |
-| --------- | ---------------------- | ---------------------------------------------------------------------------------------- |
-| `id`      | `string`               | Workflow run/instance id, or the stable agent instance id during agent processing.       |
-| `payload` | `TPayload`             | The invocation payload, snapshotted when the invocation is accepted.                     |
-| `env`     | `TEnv`                 | Platform env bindings: `process.env` on Node.js, the Worker env on Cloudflare.           |
-| `req`     | `Request \| undefined` | The standard Fetch `Request` for the current invocation. See [`ctx.req`](#ctxreq) below. |
-| `log`     | `FlueLogger`           | Emit observable structured log events. See [`ctx.log`](#ctxlog) below.                   |
-| `init`    | function               | Initialize a created agent for this invocation. See [`ctx.init(...)`](#ctxinit) below.   |
-
-### `ctx.req`
-
-The standard Fetch `Request` for the current invocation. Use it to read headers (`req.headers.get('authorization')`), method, URL, and the raw body (`req.text()` / `req.json()` / `req.arrayBuffer()` / `req.formData()`) — useful for things like HMAC signature verification over the request bytes.
-
-Body access is single-use, like any standard `Request`: once you call a body-reading method, calling another will throw. Use `req.clone()` if you need to read it more than once.
-
-`req` is `undefined` when the handler is invoked outside an HTTP context. Durable or recovered processing may receive a synthetic internal request instead of the original caller request, so authenticate and capture required transport metadata before durable admission; do not assume later processing retains the original headers, cookies, query parameters, URL, or body.
-
-For the client IP, parse the platform header yourself — `req.headers.get('cf-connecting-ip')` on Cloudflare, or `req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()` behind a trusted proxy on Node.js. Don't trust headers you don't control.
-
-### `ctx.log`
-
-```ts
-interface FlueLogger {
-  info(message: string, attributes?: Record<string, unknown>): void;
-  warn(message: string, attributes?: Record<string, unknown>): void;
-  error(message: string, attributes?: Record<string, unknown>): void;
-}
-```
-
-Emits observable structured log events with optional structured attributes. Log events are persisted in a run stream only during a workflow run. See [Observability](/docs/guide/observability/).
-
-### `ctx.init(...)`
-
-`ctx.init()` initializes a created agent for one workflow invocation. Each harness name may be initialized once per context. The default harness name is `'default'`.
-
-#### `AgentHarnessOptions`
-
-| Field       | Type               | Default     | Description                                                                    |
-| ----------- | ------------------ | ----------- | ------------------------------------------------------------------------------ |
-| `name`      | `string`           | `'default'` | Harness name.                                                                  |
-| `tools`     | `ToolDefinition[]` | —           | Additional custom model-callable tools available to initialized sessions.      |
-| `skills`    | `Skill[]`          | —           | Additional registered skills available to initialized sessions.                |
-| `subagents` | `AgentProfile[]`   | —           | Additional named profiles available for delegated `session.task()` operations. |
-
 ## Agent
 
-A created agent is the value returned by `createAgent()`. Addressable agents are default-exported from `agents/<name>.ts`. Workflows initialize a created agent with `ctx.init()`.
+A created agent is the opaque value returned by `createAgent()`. Default-export it from `agents/<name>.ts` to make persistent instances addressable, or bind it to a workflow as execution policy. Workflow runners initialize their harness automatically.
 
 ## Harness
 
-A harness is an initialized agent environment returned by `ctx.init()`.
+A harness is an initialized agent environment supplied by the active runner. Actions receive it as `context.harness`; application code does not name or initialize workflow harnesses.
 
 #### `FlueHarness`
 
-Initialized agent environment returned by `ctx.init()`.
+Initialized agent environment for sessions and workspace operations.
 
 ```ts
 interface FlueHarness {

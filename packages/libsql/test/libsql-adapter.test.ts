@@ -202,7 +202,7 @@ describe('libsql() PersistenceAdapter', () => {
 			runId: 'run-1',
 			workflowName: 'workflow',
 			startedAt: '2026-06-03T00:00:00.000Z',
-			payload: undefined,
+			input: undefined,
 		});
 		await runStore.endRun({
 			runId: 'run-1',

@@ -18,10 +18,10 @@ Every delivered event carries the durable event-format version `v: 1`, a per-con
 
 ## Run types
 
-| Type        | Description                                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `RunRecord` | Persisted workflow-run record, including the workflow name, status, timestamps, payload, result, and error fields. |
-| `RunStatus` | Workflow-run status: `'active'`, `'completed'`, or `'errored'`.                                                    |
+| Type        | Description                                                                                                      |
+| ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `RunRecord` | Persisted workflow-run record, including the workflow name, status, timestamps, input, result, and error fields. |
+| `RunStatus` | Workflow-run status: `'active'`, `'completed'`, or `'errored'`.                                                  |
 
 ## Normalized model-turn types
 

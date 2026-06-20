@@ -47,7 +47,7 @@ through `process.env` in both targets.
 
 ## Decide what may leave the application
 
-Braintrust's Flue observer exports workflow payloads and results, model-visible
+Braintrust's Flue observer exports workflow results, model-visible
 messages and output, model reasoning, system prompts, tool definitions, tool
 arguments and results, task prompts and results, errors, and correlation
 metadata. Review the
@@ -98,7 +98,7 @@ function compatibleEvent(event: FlueEvent): unknown {
   if (event.type === 'run_resume') {
     if (observedRuns.has(event.runId)) return event;
     observedRuns.add(event.runId);
-    return { ...event, type: 'run_start', payload: undefined };
+    return { ...event, type: 'run_start', input: undefined, payload: undefined };
   }
   if (
     event.type === 'operation_start' ||
@@ -121,7 +121,7 @@ Braintrust 3.17 expects the previous `tool_call` name for Flue's terminal tool
 event, while current Flue emits `tool`. The compatibility translation closes
 tool spans without changing Flue's event contract. Braintrust also does not yet
 recognize `run_resume`. When this isolate did not observe the original
-`run_start`, the bridge translates recovery to a payload-less `run_start` so
+`run_start`, the bridge translates recovery to a synthetic input-less `run_start` so
 later activity has a root span. When the predecessor remains locally tracked,
 it ignores `run_resume` and lets `run_end` close that span instead of replacing
 it. This is a compatibility fallback: it loses Flue's distinct recovery
@@ -255,7 +255,7 @@ Remove the runtime event-type filter and ignore unsupported events inside the br
    if (event.type === 'run_resume') {
      if (observedRuns.has(event.runId)) return event;
      observedRuns.add(event.runId);
-     return { ...event, type: 'run_start', payload: undefined };
+     return { ...event, type: 'run_start', input: undefined, payload: undefined };
    }
 -  return event;
 +  if (

@@ -89,7 +89,7 @@ The new segment links to the predecessor only when that span context remains ava
 
 ## Export content safely
 
-By default, spans contain identifiers, durations, model and provider attributes, token and cost metadata, log levels, and generic failure messages. Workflow payloads and results, detailed errors, model input and output, tool values, task content, and log content are omitted.
+By default, spans contain identifiers, durations, model and provider attributes, token and cost metadata, log levels, and generic failure messages. Workflow inputs and results, detailed errors, model input and output, tool values, task content, and log content are omitted.
 
 Provide `exportContent(event)` to opt specific events into content export. It receives a shallow event copy; return a sanitized event to export its supported values or `undefined` to omit content:
 

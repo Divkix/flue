@@ -31,7 +31,7 @@ function compatibleEvent(event: FlueEvent): unknown {
 	if (event.type === 'run_resume') {
 		if (observedRuns.has(event.runId)) return event;
 		observedRuns.add(event.runId);
-		return { ...event, type: 'run_start', payload: undefined };
+		return { ...event, type: 'run_start', input: undefined, payload: undefined };
 	}
 	if (
 		event.type === 'operation_start' ||

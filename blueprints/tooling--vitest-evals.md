@@ -173,7 +173,7 @@ describeEval('service status agent', { harness }, (it) => {
 
 Prefer deterministic assertions for exact contracts such as structured output, required tools, prohibited tools, or stable content. Add a `vitest-evals` judge only when the behavior is genuinely semantic. Configure its model separately from the agent under evaluation.
 
-For a workflow, create a project-specific harness around `client.workflows.invoke(name, { payload, wait: 'result' })`. Return the workflow's application-facing result as `output`, and retain `runId` in metadata or artifacts. Do not force workflow behavior through the agent harness.
+For a workflow, create a project-specific harness around `client.workflows.invoke(name, { input, wait: 'result' })`. Return the workflow's application-facing result as `output`, and retain `runId` in metadata or artifacts. Do not force workflow behavior through the agent harness.
 
 ## Run and report evals
 

@@ -39,7 +39,7 @@ function App() {
 		setActionError(undefined);
 		try {
 			const result = await flue.workflows.invoke('demo', {
-				payload: { requestedAt: new Date().toISOString() },
+				input: { requestedAt: new Date().toISOString() },
 			});
 			setRunId(result.runId);
 		} catch (error) {

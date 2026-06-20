@@ -95,7 +95,7 @@ Normally you can trust the agent to use the skills you provide it, as needed, to
 In workflows, you can manually trigger a skill through the `session.skill(name: string)` API method. This works with both registered imported skills and workspace-discovered skills.
 
 ```ts title="src/workflows/review-change.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+import { createAgent, createWorkflow } from '@flue/runtime';
 import * as v from 'valibot';
 import review from '../skills/review/SKILL.md' with { type: 'skill' };
 
@@ -104,20 +104,23 @@ const agent = createAgent(() => ({
   skills: [review],
 }));
 
-export async function run({ init, payload }: FlueContext<{ change: string }>) {
-  const harness = await init(agent);
-  const session = await harness.session();
+export default createWorkflow({
+  agent,
+  input: v.object({ change: v.string() }),
 
-  const response = await session.skill('review', {
-    args: { change: payload.change },
-    result: v.object({
-      approved: v.boolean(),
-      summary: v.string(),
-    }),
-  });
-
-  return response.data;
-}
+  async run({ harness, input }) {
+    const response = await (
+      await harness.session()
+    ).skill('review', {
+      args: { change: input.change },
+      result: v.object({
+        approved: v.boolean(),
+        summary: v.string(),
+      }),
+    });
+    return response.data;
+  },
+});
 ```
 
 `args` provides input for this invocation of the skill. The `result` schema makes `response.data` a validated structured result; omit it when you want text output from `response.text`. The string passed to `session.skill(...)` is the declared skill name, not a path to `SKILL.md`.

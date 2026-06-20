@@ -33,35 +33,35 @@ npm install -D @flue/cli
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 const translator = createAgent(() => ({ model: 'openai/gpt-5.5' }));
 
-export async function run({ init, payload }: FlueContext<{ text: string; language: string }>) {
-  const harness = await init(translator);
-  const session = await harness.session();
+export default createWorkflow({
+  agent: translator,
+  input: v.object({ text: v.string(), language: v.string() }),
 
-  const { data } = await session.prompt(
-    `Translate this to ${payload.language}: "${payload.text}"`,
-    {
+  async run({ harness, input }) {
+    const { data } = await (
+      await harness.session()
+    ).prompt(`Translate this to ${input.language}: "${input.text}"`, {
       result: v.object({
         translation: v.string(),
         confidence: v.picklist(['low', 'medium', 'high']),
       }),
-    },
-  );
-
-  return data;
-}
+    });
+    return data;
+  },
+});
 ```
 
 A few things to note:
 
 - **`route`** — Export Hono middleware to expose this workflow via HTTP. It may perform authentication before calling `next()`.
-- **`createAgent(...)` + `init(agent)`** — Created agents declare model and sandbox configuration; workflows initialize them when needed. `init(agent)` fails unless its created agent config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives initialized agents a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`createAgent(...)` + `createWorkflow(...)`** — The required workflow agent declares model and sandbox policy. Flue initializes its harness for each run. By default, it receives a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Add your API key
@@ -112,7 +112,7 @@ You can also invoke any workflow from the CLI without starting a server. `flue r
 
 ```bash
 npx flue run translate --target node \
-  --payload '{"text": "Hello world", "language": "French"}'
+  --input '{"text": "Hello world", "language": "French"}'
 ```
 
 ## Subagents
@@ -128,9 +128,16 @@ const analyst = defineAgentProfile({
 });
 const reportAgent = createAgent(() => ({ model: 'openai/gpt-5.5', subagents: [analyst] }));
 
-const harness = await init(reportAgent);
-const session = await harness.session();
-const analysis = await session.task("Analyze this quarter's metrics", { agent: 'analyst' });
+export default createWorkflow({
+  agent: reportAgent,
+  async run({ harness }) {
+    return await (
+      await harness.session()
+    ).task("Analyze this quarter's metrics", {
+      agent: 'analyst',
+    });
+  },
+});
 ```
 
 ## Sandbox context
@@ -175,7 +182,7 @@ Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale
 `.flue/workflows/reviewer.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import { createAgent, createWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
@@ -183,14 +190,14 @@ export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 const reviewer = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
 
-export async function run({ init, payload }: FlueContext<{ topic: string }>) {
-  const harness = await init(reviewer);
-  const session = await harness.session();
+export default createWorkflow({
+  agent: reviewer,
+  input: v.object({ topic: v.string() }),
 
-  const { data } = await session.prompt(
-    `Review the codebase and identify potential issues in the area
-    related to: ${payload.topic}`,
-    {
+  async run({ harness, input }) {
+    const { data } = await (
+      await harness.session()
+    ).prompt(`Review the codebase and identify potential issues related to: ${input.topic}`, {
       result: v.object({
         issues: v.array(
           v.object({
@@ -202,11 +209,10 @@ export async function run({ init, payload }: FlueContext<{ topic: string }>) {
         ),
         summary: v.string(),
       }),
-    },
-  );
-
-  return data;
-}
+    });
+    return data;
+  },
+});
 ```
 
 The agent reads, searches, and modifies files via its built-in tools — read, write, edit, grep, glob, bash. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool. Env vars are opt-in via `local({ env: { ... } })` — pass `process.env.GH_TOKEN`, `process.env.NPM_TOKEN`, etc. into the sandbox for the binaries that need them.

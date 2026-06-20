@@ -21,7 +21,7 @@ import {
 
 Every delivered event carries the durable event-format version `v: 1`, a per-context `eventIndex`, and a `timestamp`. Applicable events may also carry harness and session names, generated operation and turn ids, task correlation, and parent-session correlation. Events are durably stored in an event stream and can be replayed from any offset via the Durable Streams protocol — except `turn_request`, which is delivered to in-process subscribers only (see below).
 
-Runtime events can contain payloads, prompts, system instructions, reasoning-bearing messages, logs, tool arguments, tool results, and terminal errors. Apply an exporter-local sanitization policy before forwarding events to an external service.
+Runtime events can contain workflow inputs, provider or transport payloads, prompts, system instructions, reasoning-bearing messages, logs, tool arguments, tool results, and terminal errors. Apply an exporter-local sanitization policy before forwarding events to an external service.
 
 Events never carry raw image bytes. Image content blocks in event payloads keep their `mimeType` but have `data` replaced with the sentinel string `'[image data omitted from event]'`, exported as the `IMAGE_DATA_OMITTED` constant from both `@flue/runtime` and `@flue/sdk`. Session history retains the real bytes for model context.
 
@@ -29,7 +29,7 @@ Events never carry raw image bytes. Image content blocks in event payloads keep 
 
 | Event                | Meaning                                                                                                                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run_start`          | Workflow run started. Includes the workflow name and payload.                                                                                                                                                                                      |
+| `run_start`          | Workflow run started. Includes the workflow name and input.                                                                                                                                                                                        |
 | `run_resume`         | Recovery continued handling an admitted workflow run after interruption. Workflow code did not resume or retry. It can be the first persisted lifecycle event when interruption occurs after admission but before `run_start`.                     |
 | `run_end`            | Workflow run ended. Includes result or error state and duration.                                                                                                                                                                                   |
 | `agent_start`        | Agent loop started.                                                                                                                                                                                                                                |
