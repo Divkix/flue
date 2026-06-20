@@ -56,11 +56,10 @@ Bind the extracted Action without repeating its schemas or handler:
 import { defineAgent, defineWorkflow } from '@flue/runtime';
 import { summarize } from '../actions/summarize.ts';
 
-const summarizer = defineAgent(() => ({
-  model: 'anthropic/claude-haiku-4-5',
-}));
-
-export default defineWorkflow({ agent: summarizer, action: summarize });
+export default defineWorkflow({
+  agent: defineAgent(() => ({ model: 'anthropic/claude-haiku-4-5' })),
+  action: summarize,
+});
 ```
 
 Start inline when behavior belongs to one workflow. Extract an Action when another workflow or a model should call the same operation. See [`defineAction()`](/docs/api/action-api/#defineaction) and [`defineWorkflow()`](/docs/api/workflow-api/#defineworkflow) for their complete options.
@@ -92,17 +91,44 @@ const { runId } = await invoke(summarize, {
 
 `invoke()` admits a real workflow run and returns its `runId` without waiting for completion. Import the exact default export of a discovered workflow module. Use `dispatch()` instead when input should continue one persistent Agent conversation.
 
-### HTTP and SDK
+## Expose a workflow over HTTP
 
-HTTP invocation is opt-in. Export route middleware from the workflow module when callers should be able to start it through your Flue app:
+Workflow HTTP access is private by default. Two independent module exports control it:
+
+| Export  | Exposes                                                     |
+| ------- | ----------------------------------------------------------- |
+| `route` | Invocation at `POST /workflows/<name>`.                     |
+| `runs`  | Run records and event streams beneath `/runs/<runId>`.      |
+
+Use the same authentication policy for both when callers should be able to invoke and inspect a workflow:
 
 ```ts title="src/workflows/summarize.ts"
-import type { WorkflowRouteHandler } from '@flue/runtime';
+import type {
+  WorkflowRouteHandler,
+  WorkflowRunsHandler,
+} from '@flue/runtime';
+import { requireUser } from '../auth.ts';
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
+export const route: WorkflowRouteHandler = requireUser;
+export const runs: WorkflowRunsHandler = requireUser;
 ```
 
-Callers can then send the input JSON to `POST /workflows/summarize` or use `client.workflows.invoke('summarize', { input })`. Add `?wait=result` over HTTP, or `wait: 'result'` in the SDK, to wait for completion. Both forms return the `runId`; use it with an exposed run resource when you need events or metadata. Route-free workflows remain available to the CLI and ambient `invoke()`; see the [Workflow API HTTP exports](/docs/api/workflow-api/#http-exports) for middleware behavior.
+Each handler is ordinary Hono middleware. Calling `next()` allows the request; returning a response denies it. Export only `route` when callers may start work but must not inspect runs, or only `runs` when runs created by schedules or application code should be inspectable.
+
+With both exports, an SDK caller can invoke and then inspect the run:
+
+```ts
+const { runId } = await client.workflows.invoke('summarize', {
+  input: { text: 'Summarize this document.' },
+});
+
+const record = await client.runs.get(runId);
+const events = await client.runs.events(runId);
+```
+
+Invocation returns `{ runId }`, or `{ runId, result }` with `wait: 'result'`. The `runs` export also controls `client.runs.stream()`, raw `GET` and `HEAD` requests to `/runs/<runId>`, and `flue logs`. Without the corresponding export, HTTP clients receive `404`. Run data may contain sensitive inputs, results, and model activity, so do not treat a run ID as a credential.
+
+These exports do not affect `flue run`, schedules, ambient `invoke()`, or server-side `listRuns()` and `getRun()`. See the [Workflow API HTTP exports](/docs/api/workflow-api/#http-exports) for the complete contract.
 
 ## Use the workflow harness
 
@@ -118,9 +144,3 @@ async run({ harness, input }) {
 ```
 
 A session can also run skills, delegate tasks, and produce schema-backed structured results. See [Agent API](/docs/api/agent-api/), [Skills](/docs/guide/skills/), [Subagents](/docs/guide/subagents/), and [Sandboxes](/docs/guide/sandboxes/).
-
-## Inspect runs
-
-Every invocation creates a workflow run with a unique `runId`. Export `runs` from a workflow module to expose its existing runs through `GET /runs/<runId>`, `GET /runs/<runId>?meta`, `client.runs`, and `flue logs`. Without that export, HTTP clients receive the same `404` as they would for an unknown run.
-
-Run records can contain inputs, results, logs, and model activity. Authorize every exposed run request in `runs`; see [Routing](/docs/guide/routing/#exposing-agents-and-workflows) for an example. Server-side `listRuns()` and `getRun()` remain available independently for application-owned inspection routes. See the [Workflow lifecycle reference](/docs/api/workflow-api/#lifecycle) for persisted input and event behavior.
